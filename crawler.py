@@ -16,6 +16,7 @@ def url2path(url, working_folder):
     return path
 
 def download(url, working_folder):
+    logging.info(f"download {url}")
     path = url2path(url, working_folder)
     if not os.path.exists(path):
         try:
