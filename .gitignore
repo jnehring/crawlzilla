@@ -1,5 +1,4 @@
-data/download_dir
-data/data.json
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
