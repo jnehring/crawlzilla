@@ -20,7 +20,7 @@ def download(url, working_folder):
     path = url2path(url, working_folder)
     if not os.path.exists(path):
         try:
-            content = requests.get(url).content
+            content = requests.get(url, timeout=10).content
             content = content.decode("utf-8")
             with open(path, "w") as f:
                 f.write(url)
@@ -44,6 +44,7 @@ def fetch(crawlfolder):
                 url = url[0:-1]
             return url
         urls_to_crawl = [clean(x) for x in urls_to_crawl]
+
 
     output_folder = os.path.join(crawlfolder, "output_folder")
     if not os.path.exists(output_folder):
