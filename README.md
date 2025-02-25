@@ -1,9 +1,5 @@
-# crawl_kinyarwanda
-
-Cool way to crawl Kinyarwanda (and many other) files
-
-https://stackoverflow.com/questions/55532752/how-to-crawl-the-web-for-specific-language
-
-## Installation
-
-Python Version 3.12.7
+SELECT url, url_host_registered_domain, content_languages
+FROM "ccindex"."ccindex"
+WHERE crawl = 'CC-MAIN-2024-51'
+  AND subset = 'warc'
+  AND content_languages IN ('swa', 'kin', 'yor', 'run', 'hau', 'amh', 'orm', 'lin');
