@@ -135,6 +135,7 @@ class Parser:
                         continue
 
                     text = "\n".join([s["text"] for s in segments])
+
                     language = None
                     if len(languages) == 1:
                         language = languages[0]
