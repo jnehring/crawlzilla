@@ -9,8 +9,10 @@ import nltk
 import re
 from tqdm import tqdm
 
+output_folder = "../output/"
+
 def response_codes():
-    infolder = "output/html"
+    infolder = os.path.join(output_folder, "html")
     response_codes = {}
     infiles = os.listdir(infolder)
     pbar = tqdm(total=len(infiles))
@@ -39,8 +41,8 @@ def response_codes():
             print(f"{code}:\t{count}")
 
 def read_parsed():
-    infolder = "output/parsed"
-    outfolder = "output/final_data/"
+    infolder = os.path.join(output_folder, "parsed")
+    outfolder = os.path.join(output_folder, "final_data/")
 
     if not os.path.exists(outfolder):
         os.mkdir(outfolder)

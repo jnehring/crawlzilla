@@ -15,19 +15,24 @@ import time
 from urllib.parse import urljoin, urlparse
 import sys
 import shutil
+import argparse
+import random
 
 @dataclass
 class CrawlerConfig:
 
     def __init__(self,
-        output_folder : str = "output",
+        output_folder : str = "../output",
         html_folder : str = "html",
         languages : List[str] = ['swh_Latn', 'kin_Latn', 'yor_Latn', 'run_Latn', 'hau_Latn', 'amh_Latn', 'orm_Latn', 'lin_Latn'],
         seed_file : str = "assets/seedurls.txt",
         parsed_folder : str = "parsed",
-        round_size : int = 500,
+        round_size : int = 200,
         download_batch_size : int = 250,
-        download_n_threads = 10
+        download_n_threads = 20,
+        accept_content_types : List[str] = ["text/html"],
+        request_timeout : int = 20,
+        download_sleep_time : int = 0.1
         ):
 
         self.output_folder : str = output_folder
@@ -38,26 +43,44 @@ class CrawlerConfig:
         self.download_n_threads : int = download_n_threads
         self.parsed_folder : str = parsed_folder
         self.round_size = round_size
+        self.accept_content_types : List[str] = accept_content_types
+        self.request_timeout : int = request_timeout
+        self.download_sleep_time : int = download_sleep_time
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
-def download(url):
+def download(args):
+    url, config = args
+
     json_data = {
         "url": url,
     }
 
     try:
-        r = requests.get(url, timeout=15)
+        r = requests.get(url, timeout=config.request_timeout)
         json_data["status"] = r.status_code
+
         if r.status_code >= 200 and r.status_code < 300: 
-            json_data["html"] = r.text
+
+            json_data["headers"] = {key.lower():value.lower() for key, value in r.headers.items()}
+            if "content-type" in json_data["headers"].keys():
+
+                valid = False
+                for ct in config.accept_content_types:
+                    if json_data["headers"]["content-type"][0:len(ct)] == ct:
+                        valid = True
+
+                if valid:
+                    json_data["html"] = r.text
+
     except Exception as e:
         json_data["status"] = -1
         json_data["error"] = str(e)
 
+    contains_body = "html" in json_data.keys()
     json_data = json.dumps(json_data)
-    time.sleep(1)
-    return json_data
+    time.sleep(config.download_sleep_time)
+    return json_data, contains_body
 
 # codes related to downloading and storing html data 
 class HTMLStore:
@@ -81,17 +104,23 @@ class HTMLStore:
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
 
+        urls_with_html = 0
         for i in range(0, len(urls), self.config.download_batch_size):
 
             print(f"download batch {i}-{i+self.config.download_batch_size}")
-            batch = urls[i:i+self.config.download_batch_size]
+            batch = [(url, self.config, ) for url in urls[i:i+self.config.download_batch_size]]
 
             data = process_map(download, batch, max_workers=self.config.download_n_threads)
 
             for row in data:
-                self.dump_writer.write(row)
+                html, contains_body = row
+                self.dump_writer.write(html)
                 self.dump_writer.write("\n")
+                if contains_body:
+                    urls_with_html += 1
         self.dump_writer.close()
+
+        print(f"downloaded {urls_with_html:,} urls that contain html code")
 
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
@@ -185,6 +214,10 @@ class Parser:
             if (len(href) < 4 or href[0:4] != "http") and href [0] == "/":
                 href = urljoin(basename, href)
 
+            # params = href.find("?")
+            # if params > 0:
+            #     href = href[0:params]
+
             if href[-1] == "/":
                 href = href[0:-1]
 
@@ -256,8 +289,9 @@ class URLStore:
             f.write("\n".join(self.urls))
 
     def read(self):
-        with open(self.file, "r") as f:
-            self.urls = f.readlines()
+        if os.path.exists(self.file):
+            with open(self.file, "r") as f:
+                self.urls = f.readlines()
 
     def remove_urls(self, urls):
         self.urls = list(filter(lambda x:x not in urls, self.urls))
@@ -297,7 +331,9 @@ class Crawler:
 
         # download websites
         if not os.path.exists(html_file):
-            print(f"downloading round {num}")
+            print(f"start round {num}")
+            print(f"number of urls to download: {len(self.urls2download.urls):,}")
+            print(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
 
             tmp_file = os.path.join(self.config.output_folder, self.config.html_folder, "tmp_" + filename)
 
@@ -306,10 +342,11 @@ class Crawler:
             urls2parse = []
 
             for url in self.urls2download.urls:
-                if len(urls2parse) > self.config.round_size:
+
+                if len(urls2parse) >= self.config.round_size:
                     break
                     
-                if url in self.downloaded_urls.urls:
+                if url in self.downloaded_urls.urls or len(url.strip()) == 0:
                     continue
 
                 urls2parse.append(url)
@@ -324,7 +361,6 @@ class Crawler:
 
             os.rename(tmp_file, html_file)
 
-
         # parse data
         parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
         if not os.path.exists(parse_file):
@@ -333,22 +369,49 @@ class Crawler:
             tmp_file, new_urls = self.parser.parse_json(html_file)
             os.rename(tmp_file, parse_file)
 
+            print(f"extracted {len(new_urls):,} new urls")
+            
+            existing_urls = set(self.downloaded_urls.urls)
+            urls2download = set(self.urls2download.urls)
+
+            new_urls = list(new_urls)
+            random.shuffle(new_urls)
+            for url in new_urls:
+                if url not in existing_urls and url not in urls2download:
+                    self.urls2download.urls.append(url)
+            self.urls2download.write2file()
+
+def parse_args(config):
+    parser = argparse.ArgumentParser(
+                        prog='Crawler',
+                        description='Crawl African Languages')
+    
+    parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
+    parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
+    parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
+    parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
+
+    args = parser.parse_args()
+    config.round_size = args.round_size
+    config.download_batch_size = args.download_batch_size
+    config.download_n_threads = args.download_n_threads
+
+    return args
 
 def main():
 
+    print(os.getcwd())
     config = CrawlerConfig()
+
+    args = parse_args(config)
+
+    if args.start_fresh:
+        if os.path.exists(config.output_folder):
+            shutil.rmtree(config.output_folder)
+
     html_store = HTMLStore(config)
 
-    start_fresh = False
-
-    if start_fresh:
-
-        for folder in [config.html_folder, config.parsed_folder]:
-            folder = os.path.join(config.output_folder, folder)
-            if os.path.exists(folder):
-                shutil.rmtree(folder)
-                os.mkdir(folder)
-
+    if args.start_fresh:
         urls2download = open(config.seed_file).readlines()
         urls2download = [f.replace("\n", "") for f in urls2download]
         urls2download = URLs2Download(urls2download, config)
@@ -362,7 +425,6 @@ def main():
         downloaded_urls.read()
 
     parser = Parser(config)
-
     crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls)
 
     round = 1
