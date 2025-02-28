@@ -25,7 +25,16 @@ class CrawlerConfig:
     def __init__(self,
         output_folder : str = "../output",
         html_folder : str = "html",
-        languages : List[str] = ['swh_Latn', 'kin_Latn', 'yor_Latn', 'run_Latn', 'hau_Latn', 'amh_Latn', 'orm_Latn', 'lin_Latn'],
+        languages : List[str] = [
+            'swh_Latn', 
+            'kin_Latn', 
+            'yor_Latn', 
+            'run_Latn', 
+            'hau_Latn', 
+            'amh_Latn', 
+            'orm_Latn', 
+            'lin_Latn',
+        ],
         seed_file : str = "assets/seedurls.txt",
         parsed_folder : str = "parsed",
         round_size : int = 1000,
@@ -110,6 +119,7 @@ class HTMLStore:
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
 
+        start_time = time.time()
         urls_with_html = 0
         for i in range(0, len(urls), self.config.download_batch_size):
 
@@ -126,7 +136,8 @@ class HTMLStore:
                     urls_with_html += 1
         self.dump_writer.close()
 
-        print(f"downloaded {urls_with_html:,} urls that contain html code")
+        t = time.time() - start_time
+        print(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
 
 class DomainLanguageCounter:
 
@@ -384,6 +395,9 @@ class URLStore:
     def remove_urls(self, urls):
         self.urls = list(filter(lambda x:x not in urls, self.urls))
 
+    def file_exists(self):
+        return os.path.exists(self.file)
+
 class URLs2Download(URLStore):
 
     def __init__(self, seed_urls, config):
@@ -418,6 +432,11 @@ class Crawler:
     def round(self, num):
         filename = f"{num:05}.json.gz"
         html_file = os.path.join(self.config.output_folder, self.config.html_folder, filename)
+        parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
+
+        if os.path.exists(html_file) and os.path.exists(parse_file):
+            print(f"skip round {num}")
+            return
 
         print(f"start round {num}")
         print(f"number of urls to download: {len(self.urls2download.urls):,}")
@@ -457,7 +476,6 @@ class Crawler:
             os.rename(tmp_file, html_file)
 
         # parse data
-        parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
         if not os.path.exists(parse_file):
 
             print(f"parsing round {num}")
@@ -500,35 +518,37 @@ def parse_args(config):
 
 def main():
 
-    config = CrawlerConfig()
+    random.seed(0)
 
+    config = CrawlerConfig()
     args = parse_args(config)
 
     if args.start_fresh:
         if os.path.exists(config.output_folder):
             shutil.rmtree(config.output_folder)
 
+    # init all components
     html_store = HTMLStore(config)
 
     domain_language_counter : DomainLanguageCounter = DomainLanguageCounter(config)
-    if args.start_fresh:
-        urls2download = open(config.seed_file).readlines()
-        urls2download = [f.replace("\n", "") for f in urls2download]
-        random.shuffle(urls2download)
-        urls2download = URLs2Download(urls2download, config)
-        urls2download.write2file()
+    domain_language_counter.read_from_file()
 
-        downloaded_urls = DownloadedURLs(config)
+    urls2download = URLs2Download([], config)
+    if not urls2download.file_exists():
+        urls = open(config.seed_file).readlines()
+        urls = [f.replace("\n", "") for f in urls]
+        random.shuffle(urls)
+        urls2download.urls = urls
     else:
-        urls2download = URLs2Download([], config)
         urls2download.read()
-        downloaded_urls = DownloadedURLs(config)
-        downloaded_urls.read()
-        domain_language_counter.read_from_file()
+
+    downloaded_urls = DownloadedURLs(config)
+    downloaded_urls.read()
 
     parser = Parser(config)
     crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls, domain_language_counter)
 
+    # start crawling
     round = 1
     while len(urls2download.urls) > 0:
         if config.num_rounds > 0 and config.num_rounds < round:

@@ -56,7 +56,7 @@ def read_parsed():
         pbar = tqdm(total=len(infiles))
         for infile in infiles:
             pbar.update(1)
-            if infile[-7:] != "json.gz":
+            if infile[-7:] != "json.gz" or infile[0:4] == "tmp_":
                 continue
 
             infile = os.path.join(infolder, infile)
@@ -132,13 +132,20 @@ def read_parsed():
     total["language"] = "total"
     df.append(total)
     df = pd.DataFrame(df)
+
+    for c in ["characters", "sentences", "words", "urls"]:
+        df[c] = df[c].apply(lambda x:f"{x:,}")
+
+    c = "duplicates"
+    df[c] = df[c].apply(lambda x:f"{x:.2f}%")
+
     print(df)
 
 
 def main():
 
     read_parsed()
-    response_codes()
+    # response_codes()
 
 if __name__ == "__main__":
 
