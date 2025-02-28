@@ -17,6 +17,7 @@ import sys
 import shutil
 import argparse
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 @dataclass
 class CrawlerConfig:
@@ -29,7 +30,7 @@ class CrawlerConfig:
         parsed_folder : str = "parsed",
         round_size : int = 200,
         download_batch_size : int = 250,
-        download_n_threads = 20,
+        download_n_threads = 30,
         accept_content_types : List[str] = ["text/html"],
         request_timeout : int = 20,
         download_sleep_time : int = 0.1
@@ -46,6 +47,9 @@ class CrawlerConfig:
         self.accept_content_types : List[str] = accept_content_types
         self.request_timeout : int = request_timeout
         self.download_sleep_time : int = download_sleep_time
+
+        self.domain_language_filter_n = 10
+        self.domain_language_filter_ratio = 0.5
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
@@ -122,6 +126,70 @@ class HTMLStore:
 
         print(f"downloaded {urls_with_html:,} urls that contain html code")
 
+class DomainLanguageCounter:
+
+    def __init__(self, config : CrawlerConfig):
+        self.outfile = os.path.join(config.output_folder, "domain_language_counter.json")
+        self.domains = {}
+        self.domain_blacklist = set()
+        self.config = config
+
+    def add(self, domain2language):
+
+        for domain in domain2language.keys():
+
+            # if domain in self.domain_blacklist:
+            #     return
+
+            if domain not in self.domains.keys():
+                self.domains[domain] = {}
+
+            for language, count in domain2language[domain].items():
+
+                if language not in self.domains[domain].keys():
+                    self.domains[domain][language] = 0
+                
+                self.domains[domain][language] += count
+
+                if sum(self.domains[domain].values()) >= self.config.domain_language_filter_n:
+                    n1 = 0
+                    n2 = 0
+                    for language, count in self.domains[domain].items():
+                        if language in self.config.languages:
+                            n1 += 1
+                        else:
+                            n2 += 1
+                    
+                    if n2 > 0 and n1 / n2 < self.config.domain_language_filter_ratio:
+                        self.domain_blacklist.add(domain)
+
+    def is_blacklisted(self, url):
+        domain = urlparse(domain).netloc
+        return domain in self.domain_blacklist
+
+    def write(self):
+        with open(self.outfile, "w") as f:
+            data = {
+                "blacklist": list(self.domain_blacklist),
+                "domains": self.domains
+            }
+            f.write(json.dumps(data))
+
+    def read_from_file(self):
+        if os.path.exists(self.outfile):
+            with open(self.outfile, "r") as f:
+                data = json.load(f)
+                self.domain_blacklist = set(data["blacklist"])
+                self.domains = data["domains"]
+
+    def filter_urls(self, urls):
+        filtered_urls = []
+        for url in urls:
+            domain = urlparse(url).netloc
+            if not self.is_blacklisted(domain):
+                filtered_urls.append(url)
+        return filtered_urls, len(urls) - len(filtered_urls)
+
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
 
@@ -142,6 +210,7 @@ class Parser:
             for line in gzip.open(infile, "rt"):
 
                 try:
+                    domains2languages = {}
                     source_data = json.loads(line)
 
                     if source_data["status"] < 200 or source_data["status"] > 300:
@@ -160,17 +229,32 @@ class Parser:
 
                     languages = list(set([s["language"] for s in segments]))
 
+                    # do not continue if there is no text and no language
+                    if len(languages) == 0:
+                        continue
+
+                    # count languages
+                    domain = urlparse(source_data["url"]).netloc
+                    if domain not in domains2languages.keys():
+                        domains2languages[domain] = {}
+
+                    for language in languages:
+                        if language not in domains2languages[domain]:
+                            domains2languages[domain][language] = 1
+                        else:
+                            domains2languages[domain][language] += 1
+
+                    # in case there is more than a single language we will skip this document
+                    # this can be implement smarter, e.g., skip if less then 90% is in one language
                     if len(languages) > 1:
                         continue
 
-                    text = "\n".join([s["text"] for s in segments])
-
-                    language = None
-                    if len(languages) == 1:
-                        language = languages[0]
-
+                    # do not continue if the segment has the wrong language
                     if language not in self.config.languages:
                         continue
+
+                    # put text together
+                    text = "\n".join([s["text"] for s in segments])
 
                     parsed_data = {
                         "url": source_data["url"],
@@ -187,9 +271,11 @@ class Parser:
 
                     for url in page_urls:
                         urls.add(url)
+
                 except Exception as e:
                     print("exception " + str(e))
-        return outfile, urls
+
+        return outfile, urls, domains2languages
 
     # get all urls from a website
     def extract_urls(self, soup : BeautifulSoup, source_url : str):
@@ -317,23 +403,26 @@ class Crawler:
         html_store : HTMLStore,
         parser : Parser,
         urls2download : URLs2Download,
-        downloaded_urls : DownloadedURLs):
+        downloaded_urls : DownloadedURLs,
+        domain_language_counter : DomainLanguageCounter):
 
         self.config : CrawlerConfig = config
         self.html_store : HTMLStore = html_store
         self.parser : Parser = parser
         self.urls2download : URLs2Download = urls2download
         self.downloaded_urls : DownloadedURLs = downloaded_urls
+        self.domain_language_counter : DomainLanguageCounter = domain_language_counter
 
     def round(self, num):
         filename = f"{num:05}.json.gz"
         html_file = os.path.join(self.config.output_folder, self.config.html_folder, filename)
 
+        print(f"start round {num}")
+        print(f"number of urls to download: {len(self.urls2download.urls):,}")
+        print(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
+
         # download websites
         if not os.path.exists(html_file):
-            print(f"start round {num}")
-            print(f"number of urls to download: {len(self.urls2download.urls):,}")
-            print(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
 
             tmp_file = os.path.join(self.config.output_folder, self.config.html_folder, "tmp_" + filename)
 
@@ -345,7 +434,7 @@ class Crawler:
 
                 if len(urls2parse) >= self.config.round_size:
                     break
-                    
+
                 if url in self.downloaded_urls.urls or len(url.strip()) == 0:
                     continue
 
@@ -366,7 +455,10 @@ class Crawler:
         if not os.path.exists(parse_file):
 
             print(f"parsing round {num}")
-            tmp_file, new_urls = self.parser.parse_json(html_file)
+            tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
+            self.domain_language_counter.add(domains2languages)
+            self.domain_language_counter.write()
+            
             os.rename(tmp_file, parse_file)
 
             print(f"extracted {len(new_urls):,} new urls")
@@ -400,7 +492,6 @@ def parse_args(config):
 
 def main():
 
-    print(os.getcwd())
     config = CrawlerConfig()
 
     args = parse_args(config)
@@ -409,8 +500,10 @@ def main():
         if os.path.exists(config.output_folder):
             shutil.rmtree(config.output_folder)
 
+    args.start_fresh = True
     html_store = HTMLStore(config)
 
+    domain_language_counter : DomainLanguageCounter = DomainLanguageCounter(config)
     if args.start_fresh:
         urls2download = open(config.seed_file).readlines()
         urls2download = [f.replace("\n", "") for f in urls2download]
@@ -423,9 +516,10 @@ def main():
         urls2download.read()
         downloaded_urls = DownloadedURLs(config)
         downloaded_urls.read()
+        domain_language_counter.read_from_file()
 
     parser = Parser(config)
-    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls)
+    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls, domain_language_counter)
 
     round = 1
     while len(urls2download.urls) > 0:
