@@ -28,7 +28,8 @@ class CrawlerConfig:
         languages : List[str] = ['swh_Latn', 'kin_Latn', 'yor_Latn', 'run_Latn', 'hau_Latn', 'amh_Latn', 'orm_Latn', 'lin_Latn'],
         seed_file : str = "assets/seedurls.txt",
         parsed_folder : str = "parsed",
-        round_size : int = 200,
+        round_size : int = 1000,
+        num_rounds : int = -1,
         download_batch_size : int = 250,
         download_n_threads = 30,
         accept_content_types : List[str] = ["text/html"],
@@ -43,13 +44,14 @@ class CrawlerConfig:
         self.download_batch_size : int = download_batch_size
         self.download_n_threads : int = download_n_threads
         self.parsed_folder : str = parsed_folder
-        self.round_size = round_size
+        self.round_size : int = round_size
+        self.num_rounds : int = num_rounds
         self.accept_content_types : List[str] = accept_content_types
         self.request_timeout : int = request_timeout
         self.download_sleep_time : int = download_sleep_time
 
         self.domain_language_filter_n = 10
-        self.domain_language_filter_ratio = 0.5
+        self.domain_language_filter_ratio = 0.2
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
@@ -164,7 +166,7 @@ class DomainLanguageCounter:
                         self.domain_blacklist.add(domain)
 
     def is_blacklisted(self, url):
-        domain = urlparse(domain).netloc
+        domain = urlparse(url).netloc
         return domain in self.domain_blacklist
 
     def write(self):
@@ -206,11 +208,11 @@ class Parser:
     def parse_json(self, infile : str):
         outfile = os.path.join(self.parsed_folder, "tmp_" + os.path.basename(infile))
         urls = set()
+        domains2languages = {}
         with gzip.open(outfile, "wt") as writer:
             for line in gzip.open(infile, "rt"):
 
                 try:
-                    domains2languages = {}
                     source_data = json.loads(line)
 
                     if source_data["status"] < 200 or source_data["status"] > 300:
@@ -428,24 +430,28 @@ class Crawler:
 
             self.html_store.init_round(tmp_file)
 
-            urls2parse = []
+            urls2download = []
 
             for url in self.urls2download.urls:
 
-                if len(urls2parse) >= self.config.round_size:
+                if len(urls2download) >= self.config.round_size:
                     break
 
                 if url in self.downloaded_urls.urls or len(url.strip()) == 0:
                     continue
 
-                urls2parse.append(url)
+                # do not download blacklisted domains
+                if self.domain_language_counter.is_blacklisted(url):
+                    continue
 
-            self.html_store.download_urls(urls2parse)
+                urls2download.append(url)
 
-            self.urls2download.remove_urls(urls2parse)
+            self.html_store.download_urls(urls2download)
+
+            self.urls2download.remove_urls(urls2download)
             self.urls2download.write2file()
 
-            self.downloaded_urls.urls.extend(urls2parse)
+            self.downloaded_urls.urls.extend(urls2download)
             self.downloaded_urls.write2file()
 
             os.rename(tmp_file, html_file)
@@ -479,12 +485,14 @@ def parse_args(config):
                         description='Crawl African Languages')
     
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
+    parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
 
     args = parser.parse_args()
     config.round_size = args.round_size
+    config.num_rounds = args.num_rounds
     config.download_batch_size = args.download_batch_size
     config.download_n_threads = args.download_n_threads
 
@@ -500,13 +508,13 @@ def main():
         if os.path.exists(config.output_folder):
             shutil.rmtree(config.output_folder)
 
-    args.start_fresh = True
     html_store = HTMLStore(config)
 
     domain_language_counter : DomainLanguageCounter = DomainLanguageCounter(config)
     if args.start_fresh:
         urls2download = open(config.seed_file).readlines()
         urls2download = [f.replace("\n", "") for f in urls2download]
+        random.shuffle(urls2download)
         urls2download = URLs2Download(urls2download, config)
         urls2download.write2file()
 
@@ -523,6 +531,9 @@ def main():
 
     round = 1
     while len(urls2download.urls) > 0:
+        if config.num_rounds > 0 and config.num_rounds < round:
+            break
+
         crawler.round(round)
         round += 1
 
