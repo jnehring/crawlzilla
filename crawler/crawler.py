@@ -18,6 +18,7 @@ import shutil
 import argparse
 import random
 from concurrent.futures import ThreadPoolExecutor
+import logging
 
 @dataclass
 class CrawlerConfig:
@@ -123,7 +124,7 @@ class HTMLStore:
         urls_with_html = 0
         for i in range(0, len(urls), self.config.download_batch_size):
 
-            print(f"download batch {i}-{i+self.config.download_batch_size}")
+            logging.info(f"download batch {i}-{i+self.config.download_batch_size}")
             batch = [(url, self.config, ) for url in urls[i:i+self.config.download_batch_size]]
 
             data = process_map(download, batch, max_workers=self.config.download_n_threads)
@@ -137,7 +138,7 @@ class HTMLStore:
         self.dump_writer.close()
 
         t = time.time() - start_time
-        print(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
+        logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
 
 class DomainLanguageCounter:
 
@@ -204,6 +205,8 @@ class DomainLanguageCounter:
         return filtered_urls, len(urls) - len(filtered_urls)
 
 # parse downloaded html files to extract clean text, languages and more.
+
+# parse downloaded html files to extract clean text, languages and more.
 class Parser:
 
     def __init__(self, config : CrawlerConfig):
@@ -215,79 +218,108 @@ class Parser:
         model_path = hf_hub_download(repo_id="facebook/fasttext-language-identification", filename="model.bin")
         self.language_identification = fasttext.load_model(model_path)
 
+    def parse_line(self, line):
+        try:
+            source_data = json.loads(line)
+
+            if source_data["status"] < 200 or source_data["status"] > 300:
+                return
+
+            soup = BeautifulSoup(source_data["html"], "html.parser")
+            segments = []
+            for paragraph in self.extract_paragraphs_from_soup(soup):
+                lang = self.language_identification.predict(paragraph)[0][0]
+                lang = lang[len("__labal__"):]
+                segment = {
+                    "text": paragraph,
+                    "language": lang
+                }
+                segments.append(segment)
+
+            languages = list(set([s["language"] for s in segments]))
+
+            # do not continue if there is no text and no language
+            if len(languages) == 0:
+                return
+
+            # in case there is more than a single language we will skip this document
+            # this can be implement smarter, e.g., skip if less then 90% is in one language
+            if len(languages) > 1:
+                return
+
+            language = languages[0]
+
+            # do not continue if the segment has the wrong language
+            if language not in self.config.languages:
+                return
+
+            # put text together
+            text = "\n".join([s["text"] for s in segments])
+
+            parsed_data = {
+                "url": source_data["url"],
+                "language": language,
+                "text": text
+            }
+
+            page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
+            parsed_data["parsed_urls"] = list(page_urls)
+
+            return parsed_data
+
+        except Exception as e:
+            logging.exception(e)
+
+
+    #     for line in gzip.open(infile, "rt"):
+
+
+
     # read a single json file that contains html data of many pages
     def parse_json(self, infile : str):
+
+        queue = Queue()
+        pool = ThreadPoolExecutor()
+
         outfile = os.path.join(self.parsed_folder, "tmp_" + os.path.basename(infile))
+
+        def iterate_batches(reader, batch_size = 100):
+            batch = []
+            for line in reader:
+                batch.append(line)
+                if len(batch) >= batch_size:
+                    yield batch
+                    batch = []
+            yield batch
+
+
         urls = set()
         domains2languages = {}
-        with gzip.open(outfile, "wt") as writer:
-            for line in gzip.open(infile, "rt"):
 
-                try:
-                    source_data = json.loads(line)
+        with gzip.open(infile, "rt") as reader:
+            with gzip.open(outfile, "wt") as writer:
+                for batch in iterate_batches(reader):
+                    data = pool.map(self.parse_line, batch)
 
-                    if source_data["status"] < 200 or source_data["status"] > 300:
-                        continue
+                    for parsed_data in data:
+                        if parsed_data is None:
+                            continue
+                        json_data = json.dumps(parsed_data)
+                        writer.write(json_data)
+                        writer.write("\n")
 
-                    soup = BeautifulSoup(source_data["html"], "html.parser")
-                    segments = []
-                    for paragraph in self.extract_paragraphs_from_soup(soup):
-                        lang = self.language_identification.predict(paragraph)[0][0]
-                        lang = lang[len("__labal__"):]
-                        segment = {
-                            "text": paragraph,
-                            "language": lang
-                        }
-                        segments.append(segment)
+                        for url in parsed_data["parsed_urls"]:
+                            urls.add(url)
 
-                    languages = list(set([s["language"] for s in segments]))
-
-                    # do not continue if there is no text and no language
-                    if len(languages) == 0:
-                        continue
-
-                    # count languages
-                    domain = urlparse(source_data["url"]).netloc
-                    if domain not in domains2languages.keys():
-                        domains2languages[domain] = {}
-
-                    for language in languages:
+                        domain = urlparse(url).netloc
+                        if domain not in domains2languages:
+                            domains2languages[domain] = {}
+                        language = parsed_data["language"]
                         if language not in domains2languages[domain]:
                             domains2languages[domain][language] = 1
                         else:
                             domains2languages[domain][language] += 1
-
-                    # in case there is more than a single language we will skip this document
-                    # this can be implement smarter, e.g., skip if less then 90% is in one language
-                    if len(languages) > 1:
-                        continue
-
-                    # do not continue if the segment has the wrong language
-                    if language not in self.config.languages:
-                        continue
-
-                    # put text together
-                    text = "\n".join([s["text"] for s in segments])
-
-                    parsed_data = {
-                        "url": source_data["url"],
-                        "language": language,
-                        "text": text
-                    }
-
-                    page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
-                    parsed_data["parsed_urls"] = list(page_urls)
-
-                    parsed_data = json.dumps(parsed_data)
-                    writer.write(parsed_data)
-                    writer.write("\n")
-
-                    for url in page_urls:
-                        urls.add(url)
-
-                except Exception as e:
-                    print("exception " + str(e))
-
+                    
         return outfile, urls, domains2languages
 
     # get all urls from a website
@@ -330,7 +362,6 @@ class Parser:
                 continue
 
             yield href
-
 
     def extract_paragraphs(self, infile):
         html = open(infile)
@@ -435,12 +466,12 @@ class Crawler:
         parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
 
         if os.path.exists(html_file) and os.path.exists(parse_file):
-            print(f"skip round {num}")
+            logging.info(f"skip round {num}")
             return
 
-        print(f"start round {num}")
-        print(f"number of urls to download: {len(self.urls2download.urls):,}")
-        print(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
+        logging.info(f"start round {num}")
+        logging.info(f"number of urls to download: {len(self.urls2download.urls):,}")
+        logging.info(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
 
         # download websites
         if not os.path.exists(html_file):
@@ -478,14 +509,14 @@ class Crawler:
         # parse data
         if not os.path.exists(parse_file):
 
-            print(f"parsing round {num}")
+            logging.info(f"parsing round {num}")
             tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
             self.domain_language_counter.add(domains2languages)
             self.domain_language_counter.write()
             
             os.rename(tmp_file, parse_file)
 
-            print(f"extracted {len(new_urls):,} new urls")
+            logging.info(f"extracted {len(new_urls):,} new urls")
             
             existing_urls = set(self.downloaded_urls.urls)
             urls2download = set(self.urls2download.urls)
@@ -516,12 +547,27 @@ def parse_args(config):
 
     return args
 
+def init_logging():
+    # set up logging to file
+    logging.basicConfig(
+        filename='log.log',
+        level=logging.INFO, 
+        format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+
 def main():
 
     random.seed(0)
+    init_logging()
+    
+    logging.info("Start Crawler")
 
     config = CrawlerConfig()
     args = parse_args(config)
+
+    logging.info("Config: " + str(config.__dict__))
 
     if args.start_fresh:
         if os.path.exists(config.output_folder):
