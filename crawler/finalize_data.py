@@ -9,130 +9,77 @@ import nltk
 import re
 from tqdm import tqdm
 
-output_folder = "../output/"
+def get_lang(file):
+    file = file[file.find("_")+1:]
+    file = file[0:file.find(".")]
+    return file
 
-def response_codes():
-    infolder = os.path.join(output_folder, "html")
-    response_codes = {}
-    infiles = os.listdir(infolder)
-    pbar = tqdm(total=len(infiles))
-    for infile in infiles:
-        pbar.update(1)
-        if infile[-7:] != "json.gz" or infile[0:4] == "tmp_":
-            continue
+def create_language(outfile, infiles):
+    stats = {
+        "characters": 0,
+        "sentences": 0,
+        "words": 0,
+        "urls": 0,
+        "duplicates": 0,
+    }
 
-        infile = os.path.join(infolder, infile)
-        with gzip.open(infile, "rt") as reader:
-            for line in reader:
-                
-                data = json.loads(line)
-                rc = data["status"]
-                if rc not in response_codes:
-                    response_codes[rc] = 0
+    dedups = set()
 
-                response_codes[rc] += 1
+    with open(outfile, "w")  as writer:
+        for file in infiles:
+            for line in open(file):
+                h = hash(line)
+                if h in dedups:
+                    continue
 
-    codes = sorted(list(response_codes.keys()))
-    print()
-    print("response codes")
-    for code in codes:
-        count = response_codes[code]
-        if count > 10:
-            print(f"{code}:\t{count}")
+                dedups.add(h)
+                writer.write(line)
 
-def read_parsed():
-    infolder = os.path.join(output_folder, "parsed")
-    outfolder = os.path.join(output_folder, "final_data/")
+
+                stats["urls"] += 1
+
+                # collect statistics
+                for l in line.split("\n"):
+                    sent_text = nltk.sent_tokenize(l) # this gives us a list of sentences
+                    stats["sentences"] += len(sent_text)
+
+                    for sent in sent_text:
+
+                        # deduplicate
+                        h = hash(sent)
+                        if h in dedups:
+                            stats["duplicates"] += 1
+                            continue
+                        dedups.add(h)
+
+                        stats["words"] += len(sent.split(" "))
+                        stats["characters"] += len(sent)
+
+    return stats
+
+def create_final_data():
+
+    infolder = "../output/textual_outputs/"
+    outfolder = "../output/final_data/"
 
     if not os.path.exists(outfolder):
-        os.mkdir(outfolder)
+        os.makedirs(outfolder)
 
-    writers = {}
-    stats = {}
-    dedups = {}
+    files = os.listdir(infolder)
+    data = {}
+    for file in files:
 
-    try:
-        infiles = os.listdir(infolder)
-        pbar = tqdm(total=len(infiles))
-        for infile in infiles:
-            pbar.update(1)
-            if infile[-7:] != "json.gz" or infile[0:4] == "tmp_":
-                continue
+        lang = get_lang(file)
+        if lang not in data.keys():
+            data[lang] = []
+        data[lang].append(os.path.join(infolder, file))
 
-            infile = os.path.join(infolder, infile)
+    stats = []
+    for lang, files in data.items():
+        outfile = os.path.join(outfolder, lang + ".txt")
+        stats.append(create_language(outfile, files))
 
-            with gzip.open(infile, "rt") as reader:
-                for line in reader:
-                    
-                    data = json.loads(line)
-
-                    language = data["language"]
-                    if language not in writers:
-
-                        outfile = os.path.join(outfolder, f"{language}.txt.gz")
-                        writers[language] = gzip.open(outfile, "wt")
-
-                        stats[language] = {
-                            "characters": 0,
-                            "sentences": 0,
-                            "words": 0,
-                            "urls": 0,
-                            "duplicates": 0,
-                        }
-
-                        dedups[language] = set()
-
-                    text = data["text"]
-
-                    stats[language]["urls"] += 1
-
-                    # remove multiple consecutive whitespaces
-                    text = re.sub(r'\s+', ' ', text).strip()
-
-                    # collect statistics
-                    for l in text.split("\n"):
-                        sent_text = nltk.sent_tokenize(l) # this gives us a list of sentences
-                        stats[language]["sentences"] += len(sent_text)
-
-                        for sent in sent_text:
-
-                            # deduplicate
-                            h = hash(sent)
-                            if h in dedups[language]:
-                                stats[language]["duplicates"] += 1
-                                continue
-                            dedups[language].add(h)
-
-                            stats[language]["words"] += len(sent.split(" "))
-                            stats[language]["characters"] += len(sent)
-                            writers[language].write(sent)
-                            writers[language].write("\n")
-
-    finally:
-        for writer in writers.values():
-            writer.close()
-
-    # collect statistics
-    df = []
-    total = {}
-    for language in stats.keys():
-        row = {
-            "language": language
-        }
-
-        stats[language]["duplicates"] = 100 * stats[language]["duplicates"] / stats[language]["sentences"]
-
-        if len(total) == 0:
-            total = {stat:0 for stat in stats[language].keys()}
-        for key, value in stats[language].items():
-            row[key] = value
-            total[key] += value
-        df.append(row)
-
-    total["language"] = "total"
-    df.append(total)
-    df = pd.DataFrame(df)
-
+    df = pd.DataFrame(stats)
     for c in ["characters", "sentences", "words", "urls"]:
         df[c] = df[c].apply(lambda x:f"{x:,}")
 
@@ -141,12 +88,5 @@ def read_parsed():
 
     print(df)
 
-
-def main():
-
-    read_parsed()
-    # response_codes()
-
 if __name__ == "__main__":
-
-    main()
+    create_final_data()
