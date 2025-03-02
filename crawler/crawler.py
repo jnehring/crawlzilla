@@ -281,7 +281,8 @@ class HTML2Text:
         for node in self.iterate_nodes(soup):
             text = self.clean_text(node.text)
             if text is not None:
-                texts.append(text)
+                for line in text.split("\n"):
+                    texts.append(line)
         return texts
 
 
