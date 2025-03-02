@@ -59,6 +59,7 @@ class CrawlerConfig:
         self.accept_content_types : List[str] = accept_content_types
         self.request_timeout : int = request_timeout
         self.download_sleep_time : int = download_sleep_time
+        self.text_folder : str = "textual_outputs"
 
         self.domain_language_filter_n = 10
         self.domain_language_filter_ratio = 0.2
@@ -204,7 +205,85 @@ class DomainLanguageCounter:
                 filtered_urls.append(url)
         return filtered_urls, len(urls) - len(filtered_urls)
 
-# parse downloaded html files to extract clean text, languages and more.
+
+class HTML2Text:
+
+    def __init__(self):
+        self.replace_consecutive_whitespace = re.compile(r'\s+')
+        self.nodeTypes = set(["p", "li", "span", "h1", "h2", "h3", "h4", "h5", "h6"])
+
+    def iterate_nodes(self, parent):
+
+        if not "contents" in parent.__dict__.keys():
+            return
+
+        for child in parent.contents:
+            if child.name in self.nodeTypes:
+                yield child
+            else:
+                for node in self.iterate_nodes(child):
+                    yield node
+
+    def clean_text(self, text):
+
+        lines = []
+        for line in text.split("\n"):
+            line = line.strip()
+
+            # needle = "Mitandao Yachemka"
+            # if line.find(needle) >= 0:
+            #     print(line)
+
+            if len(line) == 0:
+                continue
+
+            if len(line) == 0:
+                continue
+
+            # needs to have a minimum length
+            if len(line) < 50:
+                continue
+
+            # needs to contain at least one sentence marks
+            sentence_marks = ".,!?"
+            counts = sum([line.count(x) for x in sentence_marks])
+
+            # if counts == 0:
+            #     continue
+
+            # needs to have a ratio of upper / lower characters
+            lower = "abcdefghijklmnobqrstuvwxyz"
+            upper = lower.upper()
+
+            lower_ratio = sum(line.count(x) for x in lower) / len(line)
+            upper_ratio = sum(line.count(x) for x in upper) / len(line)
+
+            if lower_ratio > 0.95 or upper_ratio > 0.2:
+                continue
+
+            # should not end with ...
+            needle = "..."
+            if line[-3:] == needle:
+                continue
+
+            line = self.replace_consecutive_whitespace.sub(" ", line)
+
+            lines.append(line)
+
+        if len(lines) == 0:
+            return None
+        else:
+            lines = list(set(lines))
+            return "\n".join(lines)
+            
+    def extract_text(self, soup):
+        texts = []
+        for node in self.iterate_nodes(soup):
+            text = self.clean_text(node.text)
+            if text is not None:
+                texts.append(text)
+        return texts
+
 
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
@@ -217,6 +296,7 @@ class Parser:
 
         model_path = hf_hub_download(repo_id="facebook/fasttext-language-identification", filename="model.bin")
         self.language_identification = fasttext.load_model(model_path)
+        self.html2text = HTML2Text()
 
     def parse_line(self, line):
         try:
@@ -227,7 +307,7 @@ class Parser:
 
             soup = BeautifulSoup(source_data["html"], "html.parser")
             segments = []
-            for paragraph in self.extract_paragraphs_from_soup(soup):
+            for paragraph in self.html2text.extract_text(soup):
                 lang = self.language_identification.predict(paragraph)[0][0]
                 lang = lang[len("__labal__"):]
                 segment = {
@@ -271,14 +351,9 @@ class Parser:
             logging.exception(e)
 
 
-    #     for line in gzip.open(infile, "rt"):
-
-
-
     # read a single json file that contains html data of many pages
     def parse_json(self, infile : str):
 
-        queue = Queue()
         pool = ThreadPoolExecutor()
 
         outfile = os.path.join(self.parsed_folder, "tmp_" + os.path.basename(infile))
@@ -292,33 +367,54 @@ class Parser:
                     batch = []
             yield batch
 
-
         urls = set()
         domains2languages = {}
 
-        with gzip.open(infile, "rt") as reader:
-            with gzip.open(outfile, "wt") as writer:
-                for batch in iterate_batches(reader):
-                    data = pool.map(self.parse_line, batch)
+        writers = {}
+        try:
+            with gzip.open(infile, "rt") as reader:
+                with gzip.open(outfile, "wt") as writer:
+                    for batch in iterate_batches(reader):
+                        data = pool.map(self.parse_line, batch)
 
-                    for parsed_data in data:
-                        if parsed_data is None:
-                            continue
-                        json_data = json.dumps(parsed_data)
-                        writer.write(json_data)
-                        writer.write("\n")
+                        for parsed_data in data:
+                            if parsed_data is None:
+                                continue
 
-                        for url in parsed_data["parsed_urls"]:
-                            urls.add(url)
+                            json_data = json.dumps(parsed_data)
+                            writer.write(json_data)
+                            writer.write("\n")
 
-                        domain = urlparse(url).netloc
-                        if domain not in domains2languages:
-                            domains2languages[domain] = {}
-                        language = parsed_data["language"]
-                        if language not in domains2languages[domain]:
-                            domains2languages[domain][language] = 1
-                        else:
-                            domains2languages[domain][language] += 1
+                            for url in parsed_data["parsed_urls"]:
+                                urls.add(url)
+
+                            domain = urlparse(url).netloc
+                            if domain not in domains2languages:
+                                domains2languages[domain] = {}
+                            language = parsed_data["language"]
+                            if language not in domains2languages[domain]:
+                                domains2languages[domain][language] = 1
+                            else:
+                                domains2languages[domain][language] += 1
+
+                            if parsed_data["language"] not in writers.keys():
+                                outfolder = os.path.join(self.config.output_folder, self.config.text_folder)
+                                if not os.path.exists(outfolder):
+                                    os.mkdir(outfolder)
+                                
+                                outfile_clean = os.path.basename(infile)
+                                outfile_clean = outfile_clean[0:outfile_clean.find(".")] + "_" + parsed_data["language"] + ".txt"
+                                outfile_clean = os.path.join(outfolder, outfile_clean)
+                                writers[parsed_data["language"]] = open(outfile_clean, "w")
+                            
+                            writers[parsed_data["language"]].write(parsed_data["text"])
+                            writers[parsed_data["language"]].write("\n")
+
+
+        finally:
+            for writer in writers.values():
+                writer.close()
+                        
                     
         return outfile, urls, domains2languages
 
@@ -363,50 +459,50 @@ class Parser:
 
             yield href
 
-    def extract_paragraphs(self, infile):
-        html = open(infile)
-        html = html.readlines()[1:]
-        html = "\n".join(html)
+    # def extract_paragraphs(self, infile):
+    #     html = open(infile)
+    #     html = html.readlines()[1:]
+    #     html = "\n".join(html)
 
-        soup = BeautifulSoup(html, "html.parser")
-        for p in self.extract_paragraphs_from_soup(soup):
-            yield p
+    #     soup = BeautifulSoup(html, "html.parser")
+    #     for p in self.extract_paragraphs_from_soup(soup):
+    #         yield p
 
-    def extract_paragraphs_from_soup(self, soup):
+    # def extract_paragraphs_from_soup(self, soup):
 
-        for line in soup.get_text().split("\n"):
-            line = line.strip()
+    #     for line in soup.get_text().split("\n"):
+    #         line = line.strip()
 
-            if len(line) == 0:
-                continue
+    #         if len(line) == 0:
+    #             continue
 
-            # needs to have a minimum length
-            if len(line) < 50:
-                continue
+    #         # needs to have a minimum length
+    #         if len(line) < 50:
+    #             continue
 
-            # needs to contain at least one sentence marks
-            sentence_marks = ".,!?"
-            counts = sum([line.count(x) for x in sentence_marks])
+    #         # needs to contain at least one sentence marks
+    #         sentence_marks = ".,!?"
+    #         counts = sum([line.count(x) for x in sentence_marks])
 
-            if counts == 0:
-                continue
+    #         if counts == 0:
+    #             continue
 
-            # needs to have a ratio of upper / lower characters
-            lower = "abcdefghijklmnobqrstuvwxyz"
-            upper = lower.upper()
+    #         # needs to have a ratio of upper / lower characters
+    #         lower = "abcdefghijklmnobqrstuvwxyz"
+    #         upper = lower.upper()
 
-            lower_ratio = sum(line.count(x) for x in lower) / len(line)
-            upper_ratio = sum(line.count(x) for x in upper) / len(line)
+    #         lower_ratio = sum(line.count(x) for x in lower) / len(line)
+    #         upper_ratio = sum(line.count(x) for x in upper) / len(line)
 
-            if lower_ratio > 0.95 or upper_ratio > 0.2:
-                continue
+    #         if lower_ratio > 0.95 or upper_ratio > 0.2:
+    #             continue
 
-            # should not end with ...
-            needle = "..."
-            if line[-3:] == needle:
-                continue
+    #         # should not end with ...
+    #         needle = "..."
+    #         if line[-3:] == needle:
+    #             continue
 
-            yield line
+    #         yield line
 
 class URLStore:
 
@@ -415,6 +511,7 @@ class URLStore:
         self.file = file
 
     def write2file(self):
+        self.urls = list(filter(lambda x:len(x.strip()) > 0, self.urls))
         with open(self.file, "w") as f:
             f.write("\n".join(self.urls))
 
