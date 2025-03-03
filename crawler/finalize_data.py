@@ -56,6 +56,7 @@ def create_language(language, outfile, infiles):
                         stats["words"] += len(sent.split(" "))
                         stats["characters"] += len(sent)
 
+    stats["duplicates"] = 100 * stats["duplicates"] / stats["sentences"]
     return stats
 
 def create_final_data():
@@ -81,7 +82,7 @@ def create_final_data():
         _stats = create_language(lang, outfile, files)
         stats.append(_stats)
 
-    df = pd.DataFrame(stats)
+    df = pd.DataFrame(stats).sort_values(by="words", ascending=False)
     for c in ["characters", "sentences", "words", "urls"]:
         df[c] = df[c].apply(lambda x:f"{x:,}")
 
