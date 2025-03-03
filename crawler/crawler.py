@@ -27,15 +27,18 @@ class CrawlerConfig:
         output_folder : str = "../output",
         html_folder : str = "html",
         languages : List[str] = [
-            'swh_Latn', 
             'kin_Latn', 
-            'yor_Latn', 
-            'run_Latn', 
-            'hau_Latn', 
-            'amh_Latn', 
-            'orm_Latn', 
-            'lin_Latn',
         ],
+        # languages : List[str] = [
+        #     'swh_Latn', 
+        #     'kin_Latn', 
+        #     'yor_Latn', 
+        #     'run_Latn', 
+        #     'hau_Latn', 
+        #     'amh_Latn', 
+        #     'orm_Latn', 
+        #     'lin_Latn',
+        # ],
         seed_file : str = "assets/seedurls.txt",
         parsed_folder : str = "parsed",
         round_size : int = 1000,
@@ -460,7 +463,8 @@ class URLStore:
         self.file = file
 
     def write2file(self):
-        self.urls = list(filter(lambda x:len(x.strip()) > 0, self.urls))
+        self.urls = [u.replace("\n", "") for u in self.urls]
+        self.urls = filter(lambda x:len(x.strip()) > 0, self.urls)
         with open(self.file, "w") as f:
             f.write("\n".join(self.urls))
 
