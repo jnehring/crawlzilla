@@ -39,7 +39,7 @@ class CrawlerConfig:
         #     'orm_Latn', 
         #     'lin_Latn',
         # ],
-        seed_file : str = "assets/seedurls.txt",
+        seed_file : str = "assets/seedurls.txt.gz",
         parsed_folder : str = "parsed",
         round_size : int = 1000,
         num_rounds : int = -1,
@@ -631,8 +631,7 @@ def main():
 
     urls2download = URLs2Download([], config)
     if not urls2download.file_exists():
-        urls = open(config.seed_file).readlines()
-        urls = [f.replace("\n", "") for f in urls]
+        urls = [f.replace("\n", "") for f in gzip.open(config.seed_file, "rt").readlines()]
         random.shuffle(urls)
         urls2download.urls = urls
     else:
