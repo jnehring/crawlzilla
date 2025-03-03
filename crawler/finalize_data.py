@@ -14,8 +14,9 @@ def get_lang(file):
     file = file[0:file.find(".")]
     return file
 
-def create_language(outfile, infiles):
+def create_language(language, outfile, infiles):
     stats = {
+        "language": language,
         "characters": 0,
         "sentences": 0,
         "words": 0,
@@ -77,7 +78,8 @@ def create_final_data():
     stats = []
     for lang, files in data.items():
         outfile = os.path.join(outfolder, lang + ".txt")
-        stats.append(create_language(outfile, files))
+        _stats = create_language(lang, outfile, files)
+        stats.append(_stats)
 
     df = pd.DataFrame(stats)
     for c in ["characters", "sentences", "words", "urls"]:

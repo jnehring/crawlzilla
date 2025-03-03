@@ -230,10 +230,6 @@ class HTML2Text:
         for line in text.split("\n"):
             line = line.strip()
 
-            # needle = "Mitandao Yachemka"
-            # if line.find(needle) >= 0:
-            #     print(line)
-
             if len(line) == 0:
                 continue
 
@@ -389,7 +385,7 @@ class Parser:
                             for url in parsed_data["parsed_urls"]:
                                 urls.add(url)
 
-                            domain = urlparse(url).netloc
+                            domain = urlparse(parsed_data["url"]).netloc
                             if domain not in domains2languages:
                                 domains2languages[domain] = {}
                             language = parsed_data["language"]
@@ -442,10 +438,6 @@ class Parser:
             if (len(href) < 4 or href[0:4] != "http") and href [0] == "/":
                 href = urljoin(basename, href)
 
-            # params = href.find("?")
-            # if params > 0:
-            #     href = href[0:params]
-
             if href[-1] == "/":
                 href = href[0:-1]
 
@@ -459,51 +451,6 @@ class Parser:
                 continue
 
             yield href
-
-    # def extract_paragraphs(self, infile):
-    #     html = open(infile)
-    #     html = html.readlines()[1:]
-    #     html = "\n".join(html)
-
-    #     soup = BeautifulSoup(html, "html.parser")
-    #     for p in self.extract_paragraphs_from_soup(soup):
-    #         yield p
-
-    # def extract_paragraphs_from_soup(self, soup):
-
-    #     for line in soup.get_text().split("\n"):
-    #         line = line.strip()
-
-    #         if len(line) == 0:
-    #             continue
-
-    #         # needs to have a minimum length
-    #         if len(line) < 50:
-    #             continue
-
-    #         # needs to contain at least one sentence marks
-    #         sentence_marks = ".,!?"
-    #         counts = sum([line.count(x) for x in sentence_marks])
-
-    #         if counts == 0:
-    #             continue
-
-    #         # needs to have a ratio of upper / lower characters
-    #         lower = "abcdefghijklmnobqrstuvwxyz"
-    #         upper = lower.upper()
-
-    #         lower_ratio = sum(line.count(x) for x in lower) / len(line)
-    #         upper_ratio = sum(line.count(x) for x in upper) / len(line)
-
-    #         if lower_ratio > 0.95 or upper_ratio > 0.2:
-    #             continue
-
-    #         # should not end with ...
-    #         needle = "..."
-    #         if line[-3:] == needle:
-    #             continue
-
-    #         yield line
 
 class URLStore:
 
