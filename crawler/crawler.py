@@ -88,6 +88,7 @@ def download(args):
                         valid = True
 
                 if valid:
+                    r.encoding = r.apparent_encoding
                     json_data["html"] = r.text
 
     except Exception as e:
