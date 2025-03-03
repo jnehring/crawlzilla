@@ -306,7 +306,7 @@ class Parser:
             segments = []
             for paragraph in self.html2text.extract_text(soup):
                 lang = self.language_identification.predict(paragraph)[0][0]
-                lang = lang[len("__labal__"):]
+                lang = lang[len("__label__"):]
                 segment = {
                     "text": paragraph,
                     "language": lang
