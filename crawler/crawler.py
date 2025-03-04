@@ -464,7 +464,7 @@ class URLStore:
 
     def write2file(self):
         self.urls = [u.replace("\n", "") for u in self.urls]
-        self.urls = filter(lambda x:len(x.strip()) > 0, self.urls)
+        self.urls = list(filter(lambda x:len(x.strip()) > 0, self.urls))
         with open(self.file, "w") as f:
             f.write("\n".join(self.urls))
 
@@ -573,6 +573,7 @@ class Crawler:
 
             new_urls = list(new_urls)
             random.shuffle(new_urls)
+
             for url in new_urls:
                 if url not in existing_urls and url not in urls2download:
                     self.urls2download.urls.append(url)
