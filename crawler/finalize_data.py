@@ -26,6 +26,8 @@ def create_language(language, outfile, infiles):
 
     dedups = set()
 
+    print("create language " + language)
+    pbar = tqdm(total=len(infiles))
     with open(outfile, "w")  as writer:
         for file in infiles:
             for line in open(file):
@@ -56,25 +58,37 @@ def create_language(language, outfile, infiles):
                         stats["words"] += len(sent.split(" "))
                         stats["characters"] += len(sent)
 
+            pbar.update(1)
+
     stats["duplicates"] = 100 * stats["duplicates"] / stats["sentences"]
+
+    print(f"processed {len(infiles)} files")
     return stats
+
+def count_lines(infile):
+    if not os.path.exists(infile):
+        return 0
+    else:
+        return len(open(infile).readlines())
 
 def create_final_data():
 
-    infolder = "../output/textual_outputs/"
+    infolder = "../output/"
+
+    textual_output_folder = os.path.join(infolder, "textual_outputs/")
     outfolder = "../output/final_data/"
 
     if not os.path.exists(outfolder):
         os.makedirs(outfolder)
 
-    files = os.listdir(infolder)
+    files = os.listdir(textual_output_folder)
     data = {}
     for file in files:
 
         lang = get_lang(file)
         if lang not in data.keys():
             data[lang] = []
-        data[lang].append(os.path.join(infolder, file))
+        data[lang].append(os.path.join(textual_output_folder, file))
 
     stats = []
     for lang, files in data.items():
@@ -90,6 +104,12 @@ def create_final_data():
     df[c] = df[c].apply(lambda x:f"{x:.2f}%")
 
     print(df)
+
+    n = count_lines(os.path.join(infolder, "downloaded_urls.txt"))
+    print(f"downloaded urls: {n:,}")
+
+    n = count_lines(os.path.join(infolder, "urls2download.txt"))
+    print(f"urls2download: {n:,}")
 
 if __name__ == "__main__":
     create_final_data()
