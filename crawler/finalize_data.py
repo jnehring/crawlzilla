@@ -73,10 +73,15 @@ def count_lines(infile):
 
 def create_final_data():
 
-    infolder = "../output/"
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
+
+    infolder = "../outputs/kin/"
 
     textual_output_folder = os.path.join(infolder, "textual_outputs/")
-    outfolder = "../output/final_data/"
+    outfolder = os.path.join(infolder, "final_data")
 
     if not os.path.exists(outfolder):
         os.makedirs(outfolder)

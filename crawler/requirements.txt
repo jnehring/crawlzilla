@@ -1,4 +1,4 @@
 beautifulsoup4==4.13.3
 fasttext==0.9.3
-huggingface_hub==2.28.1
+huggingface_hub==0.29.2
 nltk==3.9.1

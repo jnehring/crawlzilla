@@ -46,7 +46,7 @@ class CrawlerConfig:
         download_batch_size : int = 250,
         download_n_threads = 30,
         accept_content_types : List[str] = ["text/html"],
-        request_timeout : int = 20,
+        request_timeout : int = 12,
         download_sleep_time : int = 0.1
         ):
 
@@ -294,7 +294,7 @@ class Parser:
         self.parsed_folder = os.path.join(config.output_folder, config.parsed_folder)
         if not os.path.exists(self.parsed_folder):
             os.makedirs(self.parsed_folder)
-
+        
         model_path = hf_hub_download(repo_id="facebook/fasttext-language-identification", filename="model.bin")
         self.language_identification = fasttext.load_model(model_path)
         self.html2text = HTML2Text()
@@ -585,14 +585,20 @@ def parse_args(config):
                         description='Crawl African Languages')
     
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
+    parser.add_argument('--output_folder', default="../output", type=str, help="Where to store the output.")
+    parser.add_argument('--seed_file', default="assets/seedurls.txt.gz", type=str, help="Seed file")
     parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
 
     args = parser.parse_args()
-    config.round_size = args.round_size
+
+    config.start_fresh = args.start_fresh
+    config.output_folder = args.output_folder
+    config.seed_file = args.seed_file
     config.num_rounds = args.num_rounds
+    config.round_size = args.round_size
     config.download_batch_size = args.download_batch_size
     config.download_n_threads = args.download_n_threads
 
