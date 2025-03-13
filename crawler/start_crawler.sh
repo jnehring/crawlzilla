@@ -12,5 +12,5 @@ python3 crawler.py \
     --round_size 5000 \
     --download_batch_size 1000 \
     --download_n_threads 30 \
-    --language lin_Latn \
+    --language $1 \
     --seed_file ../outputs/seedurls/$1.txt.gz 

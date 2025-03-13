@@ -8,6 +8,12 @@ srun -K  \
 
 
 
+srun -K  \
+  --container-mounts=/data:/data,$HOME:$HOME \
+  --container-workdir=$PWD \
+  --container-image=/data/enroot/nvcr.io_nvidia_pytorch_22.05-py3.sqsh \
+  --mem 16GB \
+  start_crawler.sh lin_Latn
 
 
 SELECT url, url_host_registered_domain, content_languages
