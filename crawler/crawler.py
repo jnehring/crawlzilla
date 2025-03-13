@@ -585,12 +585,13 @@ def parse_args(config):
                         description='Crawl African Languages')
     
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
-    parser.add_argument('--output_folder', default="../output", type=str, help="Where to store the output.")
+    parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
     parser.add_argument('--seed_file', default="assets/seedurls.txt.gz", type=str, help="Seed file")
     parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
+    parser.add_argument('--language', default="../kin_Latn", type=str, help="Which language to use.")
 
     args = parser.parse_args()
 
@@ -601,6 +602,7 @@ def parse_args(config):
     config.round_size = args.round_size
     config.download_batch_size = args.download_batch_size
     config.download_n_threads = args.download_n_threads
+    config.language = [args.language]
 
     return args
 
