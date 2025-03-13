@@ -8,7 +8,9 @@ export PIP_CACHE_DIR=/data/nehring/cache/pip
 pip3 install --cache-dir /data/nehring/cache/pip -r requirements.txt
 
 python3 crawler.py \
-    --output_folder ../outputs/kin/ \
+    --output_folder ../outputs/$1/ \
     --round_size 5000 \
     --download_batch_size 1000 \
-    --download_n_threads 30
+    --download_n_threads 30 \
+    --language lin_Latn \
+    --seed_file ../outputs/seedurls/$1.txt.gz 
