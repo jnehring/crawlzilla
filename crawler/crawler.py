@@ -606,10 +606,10 @@ def parse_args(config):
 
     return args
 
-def init_logging():
+def init_logging(config):
     # set up logging to file
     logging.basicConfig(
-        filename='log.log',
+        filename=os.path.join(config.output_folder, 'log.log'),
         level=logging.INFO, 
         format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
         datefmt='%H:%M:%S'
@@ -619,13 +619,12 @@ def init_logging():
 def main():
 
     random.seed(0)
-    init_logging()
-    
-    logging.info("Start Crawler")
 
     config = CrawlerConfig()
     args = parse_args(config)
 
+    init_logging(config)
+    logging.info("Start Crawler")
     logging.info("Config: " + str(config.__dict__))
 
     if args.start_fresh:
