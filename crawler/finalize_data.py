@@ -9,13 +9,15 @@ import nltk
 import re
 from tqdm import tqdm
 import argparse
+from multiprocessing import Pool
+
 
 def get_lang(file):
     file = file[file.find("_")+1:]
     file = file[0:file.find(".")]
     return file
 
-def create_language(language, outfile, infiles):
+def create_language(language, args):
     stats = {
         "language": language,
         "characters": 0,
@@ -81,7 +83,7 @@ def parse_args():
     parser.add_argument('--languages', default=None, type=str, help="Limit to certain languages")
     parser.add_argument('--report_location', default="../outputs/report.txt", type=str, help="Where to create the report.")
 
-    return parser.parse_args*()
+    return parser.parse_args()
 
 def main():
 
@@ -91,44 +93,27 @@ def main():
     except LookupError:
         nltk.download('punkt')
 
-    infolder = "../outputs/kin/"
+    # detect language
+    languages = []
+    if args.languages is None:
+        def filter_languages(file):
+            path = os.path.join(args.working_folder, file)
+            return os.path.isdir(path) and file != 'seedurls'
+        languages = [filter(filter_languages, os.listdir(args.working_folder))]
+    else:
+        if args.languages.find(',') > 0:
+            languages = args.languages.split(",")
+        else:
+            languages = [args.languages]
 
-    textual_output_folder = os.path.join(infolder, "textual_outputs/")
-    outfolder = os.path.join(infolder, "final_data")
+    # process in the same or parallel threads
+    if len(languages) ==  1:
+        results = [create_language(languages[0], args)]
+    else:
+        with Pool() as pool:
+            workers = [(language, args) for language in languages]
+            results = pool.map(workers, create_language)
 
-    if not os.path.exists(outfolder):
-        os.makedirs(outfolder)
-
-    files = os.listdir(textual_output_folder)
-    data = {}
-    for file in files:
-
-        lang = get_lang(file)
-        if lang not in data.keys():
-            data[lang] = []
-        data[lang].append(os.path.join(textual_output_folder, file))
-
-    stats = []
-    for lang, files in data.items():
-        outfile = os.path.join(outfolder, lang + ".txt")
-        _stats = create_language(lang, outfile, files)
-        print("created " + outfile)
-        stats.append(_stats)
-
-    df = pd.DataFrame(stats).sort_values(by="words", ascending=False)
-    for c in ["characters", "sentences", "words", "urls"]:
-        df[c] = df[c].apply(lambda x:f"{x:,}")
-
-    c = "duplicates"
-    df[c] = df[c].apply(lambda x:f"{x:.2f}%")
-
-    print(df)
-
-    n = count_lines(os.path.join(infolder, "downloaded_urls.txt"))
-    print(f"downloaded urls: {n:,}")
-
-    n = count_lines(os.path.join(infolder, "urls2download.txt"))
-    print(f"urls2download: {n:,}")
 
 if __name__ == "__main__":
     main()
