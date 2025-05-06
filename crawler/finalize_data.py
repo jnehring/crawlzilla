@@ -8,6 +8,7 @@ import pandas as pd
 import nltk
 import re
 from tqdm import tqdm
+import argparse
 
 def get_lang(file):
     file = file[file.find("_")+1:]
@@ -71,8 +72,20 @@ def count_lines(infile):
     else:
         return len(open(infile).readlines())
 
-def create_final_data():
+def parse_args():
+    parser = argparse.ArgumentParser(
+                        prog='Data Generator',
+                        description='Generate data from crawls')
+    
+    parser.add_argument('--working_folder', default="../outputs/", type=str, help="Where is the data")
+    parser.add_argument('--languages', default=None, type=str, help="Limit to certain languages")
+    parser.add_argument('--report_location', default="../outputs/report.txt", type=str, help="Where to create the report.")
 
+    return parser.parse_args*()
+
+def main():
+
+    args = parse_args()
     try:
         nltk.data.find('tokenizers/punkt')
     except LookupError:
@@ -99,6 +112,7 @@ def create_final_data():
     for lang, files in data.items():
         outfile = os.path.join(outfolder, lang + ".txt")
         _stats = create_language(lang, outfile, files)
+        print("created " + outfile)
         stats.append(_stats)
 
     df = pd.DataFrame(stats).sort_values(by="words", ascending=False)
@@ -117,4 +131,4 @@ def create_final_data():
     print(f"urls2download: {n:,}")
 
 if __name__ == "__main__":
-    create_final_data()
+    main()
