@@ -214,7 +214,7 @@ class HTML2Text:
 
     def __init__(self):
         self.replace_consecutive_whitespace = re.compile(r'\s+')
-        self.nodeTypes = set(["p", "li", "span", "h1", "h2", "h3", "h4", "h5", "h6"])
+        self.nodeTypes = set(["p", "span", "h1", "h2", "h3", "h4", "h5", "h6"])
 
     def iterate_nodes(self, parent):
 
