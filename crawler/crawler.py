@@ -625,13 +625,16 @@ def main():
     config = CrawlerConfig()
     args = parse_args(config)
 
-    init_logging(config)
-    logging.info("Start Crawler")
-    logging.info("Config: " + str(config.__dict__))
-
     if args.start_fresh:
         if os.path.exists(config.output_folder):
             shutil.rmtree(config.output_folder)
+
+    if not os.path.exists(config.output_folder):
+        os.makedirs(config.output_folder)
+
+    init_logging(config)
+    logging.info("Start Crawler")
+    logging.info("Config: " + str(config.__dict__))
 
     # init all components
     html_store = HTMLStore(config)
