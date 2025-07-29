@@ -47,7 +47,8 @@ class CrawlerConfig:
         download_n_threads = 30,
         accept_content_types : List[str] = ["text/html"],
         request_timeout : int = 12,
-        download_sleep_time : int = 0.1
+        download_sleep_time : int = 0.1,
+        filter_for_languages : bool = True
         ):
 
         self.output_folder : str = output_folder
@@ -63,6 +64,7 @@ class CrawlerConfig:
         self.request_timeout : int = request_timeout
         self.download_sleep_time : int = download_sleep_time
         self.text_folder : str = "textual_outputs"
+        self.filter_for_languages = filter_for_languages
 
         self.domain_language_filter_n = 10
         self.domain_language_filter_ratio = 0.2
@@ -331,7 +333,7 @@ class Parser:
             language = languages[0]
 
             # do not continue if the segment has the wrong language
-            if language not in self.config.languages:
+            if self.config.filter_for_languages and language not in self.config.languages:
                 return
 
             # put text together

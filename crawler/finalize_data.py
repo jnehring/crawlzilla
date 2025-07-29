@@ -158,38 +158,5 @@ def main():
             print(f"{key}:\t{value}")
         print(sep)
 
-    # textual_output_folder = os.path.join(infolder, "textual_outputs/")
-    # outfolder = os.path.join(infolder, "final_data")
-
-    # files = os.listdir(textual_output_folder)
-    # data = {}
-    # for file in files:
-
-    #     lang = get_lang(file)
-    #     if lang not in data.keys():
-    #         data[lang] = []
-    #     data[lang].append(os.path.join(textual_output_folder, file))
-
-    # stats = []
-    # for lang, files in data.items():
-    #     outfile = os.path.join(outfolder, lang + ".txt")
-    #     _stats = create_language(lang, outfile, files)
-    #     stats.append(_stats)
-
-    # df = pd.DataFrame(stats).sort_values(by="words", ascending=False)
-    # for c in ["characters", "sentences", "words", "urls"]:
-    #     df[c] = df[c].apply(lambda x:f"{x:,}")
-
-    # c = "duplicates"
-    # df[c] = df[c].apply(lambda x:f"{x:.2f}%")
-
-    # print(df)
-
-    # n = count_lines(os.path.join(infolder, "downloaded_urls.txt"))
-    # print(f"downloaded urls: {n:,}")
-
-    # n = count_lines(os.path.join(infolder, "urls2download.txt"))
-    # print(f"urls2download: {n:,}")
-
 if __name__ == "__main__":
     main()
