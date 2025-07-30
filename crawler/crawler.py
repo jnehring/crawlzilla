@@ -55,6 +55,7 @@ class CrawlerConfig:
         self.text_folder : str = "textual_outputs"
         self.filter_for_languages = filter_for_languages
         self.log_level = log_level
+        self.seed_url = None
 
         self.domain_language_filter_n = 10
         self.domain_language_filter_ratio = 0.2
@@ -243,9 +244,6 @@ class HTML2Text:
             sentence_marks = ".,!?"
             counts = sum([line.count(x) for x in sentence_marks])
 
-            # if counts == 0:
-            #     continue
-
             # needs to have a ratio of upper / lower characters
             lower = "abcdefghijklmnobqrstuvwxyz"
             upper = lower.upper()
@@ -423,7 +421,13 @@ class Parser:
     def extract_urls(self, soup : BeautifulSoup, source_url : str):
 
         urlp = urlparse(source_url)
-        basename = f"{urlp.scheme}://{urlp.netloc}{urlp.path}"
+
+        base_href = soup.find('base', href=True)
+        if base_href:
+            base_url = urljoin(source_url, base_href['href']) # Resolve base tag's href if it's relative
+        else:
+            base_url = source_url
+
 
         for a in soup.find_all("a"):
             
@@ -443,8 +447,8 @@ class Parser:
             if href=="./":
                 continue
 
-            if (len(href) < 4 or href[0:4] != "http"):
-                href = urljoin(basename, href)
+            # change relative urls to absolute urls
+            href = urljoin(base_url, href)
 
             if href[-1] == "/":
                 href = href[0:-1]
@@ -590,7 +594,8 @@ def parse_args(config):
                         prog='Crawler',
                         description='Crawl African Languages')
     
-    parser.add_argument('--seed_file', required=True, type=str, help="Seed file")
+    parser.add_argument('--seed_file', default=None, type=str, help="Seed file")
+    parser.add_argument('--seed_url', required=False, type=str, help="Start with a single seed url. This overwrites --seed_file. It is used for debugging.")
     parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script.")
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
     parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
@@ -602,6 +607,9 @@ def parse_args(config):
 
     args = parser.parse_args()
 
+    if args.seed_file is None and args.seed_url is None:
+        raise Exception("please provide either --seed_file or seed_url")
+
     config.start_fresh = args.start_fresh
     config.output_folder = args.output_folder
     config.seed_file = args.seed_file
@@ -611,6 +619,7 @@ def parse_args(config):
     config.download_n_threads = args.download_n_threads
     config.languages = [args.language.strip()]
     config.log_level = args.log_level
+    config.seed_url = args.seed_url
 
     return args
 
@@ -658,7 +667,11 @@ def main():
 
     urls2download = URLs2Download([], config)
     if not urls2download.file_exists():
-        urls = [f.replace("\n", "") for f in gzip.open(config.seed_file, "rt").readlines()]
+
+        if config.seed_url is not None:
+            urls = [config.seed_url.strip()]
+        else:
+            urls = [f.replace("\n", "") for f in gzip.open(config.seed_file, "rt").readlines()]
         random.shuffle(urls)
         urls2download.urls = urls
     else:
