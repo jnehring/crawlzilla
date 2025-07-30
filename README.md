@@ -1,28 +1,43 @@
-Crawl finished for
+# Crawler that crawls only specific languages
 
-run_Latn, lin_Latn
+## Installation
+
+**Install Git, Python**
+**Clone this repository**
+
+```
+git clone ...
+```
+
+**Create virtual environment**
+
+```
+cd crawler
+python -m pip install venv
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt 
+```
+
+**Prepare output directory**
+
+```
+mkdir -p ../seeds/
+```
+
+**Prepare seed urls**
+
+```
+echo "https://www.kigalitoday.com/" >> ../seeds/seeds_kin_Latn.txt
+gzip ../seeds/seeds_kin_Latn.txt
+```
+
+**Start Crawler**
 
 
-srun -K  \
-  --container-mounts=/data:/data,$HOME:$HOME \
-  --container-workdir=$PWD \
-  --container-image=/data/enroot/nvcr.io_nvidia_pytorch_22.05-py3.sqsh \
-  --mem 16GB \
-  --pty \
-  /bin/bash
 
 
-
-  srun -K  \
-    --container-mounts=/data:/data,$HOME:$HOME \
-    --container-workdir=$PWD \
-    --container-image=/data/enroot/nvcr.io_nvidia_pytorch_22.05-py3.sqsh \
-    --mem 32GB \
-    start_crawler.sh lin_Latn
-
-
-SELECT url, url_host_registered_domain, content_languages
-FROM "ccindex"."ccindex"
-WHERE crawl = 'CC-MAIN-2024-51'
-  AND subset = 'warc'
-  AND content_languages IN ('swa', 'kin', 'yor', 'run', 'hau', 'amh', 'orm', 'lin');
+python3 crawler.py \
+    --output_folder ../outputs/kin_Latn \
+    --language kin_Latn \
+    --seed_file ../seeds/seeds_kin_Latn.txt.gz 

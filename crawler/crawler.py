@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import os
-import pandas as pd
 from abc import ABC, abstractmethod
 from typing import List
 import requests
@@ -19,27 +18,16 @@ import argparse
 import random
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import numpy as np
 
 @dataclass
 class CrawlerConfig:
-
+    
     def __init__(self,
+        languages : List[str] = [],
+        seed_file : str = "",
         output_folder : str = "../output",
         html_folder : str = "html",
-        languages : List[str] = [
-            'kin_Latn', 
-        ],
-        # languages : List[str] = [
-        #     'swh_Latn', 
-        #     'kin_Latn', 
-        #     'yor_Latn', 
-        #     'run_Latn', 
-        #     'hau_Latn', 
-        #     'amh_Latn', 
-        #     'orm_Latn', 
-        #     'lin_Latn',
-        # ],
-        seed_file : str = "assets/seedurls.txt.gz",
         parsed_folder : str = "parsed",
         round_size : int = 1000,
         num_rounds : int = -1,
@@ -48,7 +36,8 @@ class CrawlerConfig:
         accept_content_types : List[str] = ["text/html"],
         request_timeout : int = 12,
         download_sleep_time : int = 0.1,
-        filter_for_languages : bool = True
+        filter_for_languages : bool = True,
+        log_level : str = "info"
         ):
 
         self.output_folder : str = output_folder
@@ -65,6 +54,7 @@ class CrawlerConfig:
         self.download_sleep_time : int = download_sleep_time
         self.text_folder : str = "textual_outputs"
         self.filter_for_languages = filter_for_languages
+        self.log_level = log_level
 
         self.domain_language_filter_n = 10
         self.domain_language_filter_ratio = 0.2
@@ -147,8 +137,10 @@ class HTMLStore:
         t = time.time() - start_time
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
 
-class DomainLanguageCounter:
 
+class DomainLanguageCounter:
+    """The DomainLanguageCounter should compute how many urls with the desired languages are inside of a domain. Currently, it is not in use.
+    """
     def __init__(self, config : CrawlerConfig):
         self.outfile = os.path.join(config.output_folder, "domain_language_counter.json")
         self.domains = {}
@@ -213,7 +205,8 @@ class DomainLanguageCounter:
 
 
 class HTML2Text:
-
+    """Convert HTML code to text
+    """
     def __init__(self):
         self.replace_consecutive_whitespace = re.compile(r'\s+')
         self.nodeTypes = set(["p", "span", "h1", "h2", "h3", "h4", "h5", "h6"])
@@ -305,7 +298,9 @@ class Parser:
         try:
             source_data = json.loads(line)
 
+            logging.debug(f"parse {source_data['url']}")
             if source_data["status"] < 200 or source_data["status"] > 300:
+                logging.debug(f"skip parsing of {source_data['url']} because of http status code {source_data['status']}")
                 return
 
             soup = BeautifulSoup(source_data["html"], "html.parser")
@@ -318,24 +313,26 @@ class Parser:
                     "language": lang
                 }
                 segments.append(segment)
+            #logging.debug(f"extracted segments from {source_data['url']}: {segments}")
 
-            languages = list(set([s["language"] for s in segments]))
+            languages = list([s["language"] for s in segments])
+            #logging.debug(f"detected languages from {source_data['url']}: {languages}")
 
             # do not continue if there is no text and no language
             if len(languages) == 0:
                 return
-
-            # in case there is more than a single language we will skip this document
-            # this can be implement smarter, e.g., skip if less then 90% is in one language
-            if len(languages) > 1:
-                return
-
-            language = languages[0]
-
-            # do not continue if the segment has the wrong language
+            
+            # if there are multiple languages in the document, only accept documents that have more than 90% in a single language
+            languages, counts = np.unique(languages, return_counts=True)
+            i = np.argmax(counts)
+            language = languages[i]
             if self.config.filter_for_languages and language not in self.config.languages:
-                return
+                logging.debug(f"skip {source_data['url']} because the dominant language {language} is not in the list of desired languages")
 
+            if self.config.filter_for_languages and counts[i] / np.sum(counts) < 0.9:
+                logging.debug(f"skip {source_data['url']} because language {languages} amounts to only {100*counts[i] / np.sum(counts)}% of the data.")
+                return
+            
             # put text together
             text = "\n".join([s["text"] for s in segments])
 
@@ -357,6 +354,7 @@ class Parser:
     # read a single json file that contains html data of many pages
     def parse_json(self, infile : str):
 
+        logging.debug("start parsing " + infile)
         pool = ThreadPoolExecutor()
 
         outfile = os.path.join(self.parsed_folder, "tmp_" + os.path.basename(infile))
@@ -428,6 +426,7 @@ class Parser:
         basename = f"{urlp.scheme}://{urlp.netloc}{urlp.path}"
 
         for a in soup.find_all("a"):
+            
             if not a.has_attr("href"):
                 continue
             href = a["href"]
@@ -441,7 +440,10 @@ class Parser:
             if len(href) == 0:
                 continue
 
-            if (len(href) < 4 or href[0:4] != "http") and href [0] == "/":
+            if href=="./":
+                continue
+
+            if (len(href) < 4 or href[0:4] != "http"):
                 href = urljoin(basename, href)
 
             if href[-1] == "/":
@@ -458,6 +460,7 @@ class Parser:
 
             yield href
 
+# helper class to keep a list of urls in memory and serialize / unserialize it from a json file
 class URLStore:
 
     def __init__(self, file, start_urls = []):
@@ -481,13 +484,14 @@ class URLStore:
     def file_exists(self):
         return os.path.exists(self.file)
 
+# the urls that we need to download
 class URLs2Download(URLStore):
 
     def __init__(self, seed_urls, config):
         outfile = os.path.join(config.output_folder, "urls2download.txt")
         super().__init__(outfile, seed_urls)
 
-
+# the urls that we already downloaded
 class DownloadedURLs(URLStore):
 
     def __init__(self, config):
@@ -586,14 +590,15 @@ def parse_args(config):
                         prog='Crawler',
                         description='Crawl African Languages')
     
+    parser.add_argument('--seed_file', required=True, type=str, help="Seed file")
+    parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script.")
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
     parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
-    parser.add_argument('--seed_file', default="assets/seedurls.txt.gz", type=str, help="Seed file")
-    parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse.")
+    parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse. Set to -1 run until there are no more URLs.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
-    parser.add_argument('--language', default="../kin_Latn", type=str, help="Which language to use.")
+    parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
 
     args = parser.parse_args()
 
@@ -604,15 +609,24 @@ def parse_args(config):
     config.round_size = args.round_size
     config.download_batch_size = args.download_batch_size
     config.download_n_threads = args.download_n_threads
-    config.language = [args.language]
+    config.languages = [args.language.strip()]
+    config.log_level = args.log_level
 
     return args
 
 def init_logging(config):
     # set up logging to file
+
+    if config.log_level.lower() == "info":
+        log_level = logging.INFO
+    elif config.log_level.lower() == "debug":
+        log_level = logging.DEBUG
+    else:
+        raise Exception(f"unknown log level \"{config.log_level}\"" )
+
     logging.basicConfig(
         filename=os.path.join(config.output_folder, 'log.log'),
-        level=logging.INFO, 
+        level=log_level, 
         format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
         datefmt='%H:%M:%S'
     )
