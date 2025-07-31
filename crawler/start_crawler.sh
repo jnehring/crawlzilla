@@ -13,4 +13,4 @@ python3 crawler.py \
     --download_batch_size 1000 \
     --download_n_threads 30 \
     --language $1 \
-    --seed_file ../outputs/seedurls/$1.txt.gz 
+    --seed_file ../seedurls/$1.txt.gz 
