@@ -37,7 +37,9 @@ class CrawlerConfig:
         request_timeout : int = 12,
         download_sleep_time : int = 0.1,
         filter_for_languages : bool = True,
-        log_level : str = "info"
+        log_level : str = "info",
+        delete_parsed : bool = False,
+        delete_html : bool = False
         ):
 
         self.output_folder : str = output_folder
@@ -410,6 +412,7 @@ class Parser:
                             
                             writers[parsed_data["language"]].write(parsed_data["text"])
                             writers[parsed_data["language"]].write("\n")
+                            logging.debug(f"wrote a segment of textual data for language {parsed_data['language']}")
 
 
         finally:
@@ -591,6 +594,14 @@ class Crawler:
                     self.urls2download.urls.append(url)
             self.urls2download.write2file()
 
+        # cleanup
+        if self.config.delete_html:
+            os.remove(html_file)
+            logging.debug(f"deleted file {html_file} because delete_html=True")
+        if self.config.delete_parsed:
+            os.remove(parse_file)
+            logging.debug(f"deleted file {parse_file} because delete_parsed=True")
+
 def parse_args(config):
     parser = argparse.ArgumentParser(
                         prog='Crawler',
@@ -606,6 +617,8 @@ def parse_args(config):
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
+    parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
+    parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
 
     args = parser.parse_args()
 
@@ -622,6 +635,8 @@ def parse_args(config):
     config.languages = [args.language.strip()]
     config.log_level = args.log_level
     config.seed_url = args.seed_url
+    config.delete_parsed = args.delete_parsed
+    config.delete_html = args.delete_html
 
     return args
 
@@ -636,12 +651,13 @@ def init_logging(config):
         raise Exception(f"unknown log level \"{config.log_level}\"" )
 
     logging.basicConfig(
-        filename=os.path.join(config.output_folder, 'log.log'),
-        level=log_level, 
-        format= '[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        level=log_level,
+        format='%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("log.log"),
+            logging.StreamHandler()
+        ]
     )
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 def main():
 
