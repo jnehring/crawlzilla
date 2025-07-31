@@ -19,6 +19,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 import logging
 import numpy as np
+import glob
 
 @dataclass
 class CrawlerConfig:
@@ -529,10 +530,11 @@ class Crawler:
         filename = f"{num:05}.json.gz"
         html_file = os.path.join(self.config.output_folder, self.config.html_folder, filename)
         parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
+        textual_files = glob.glob(os.path.join(self.config.output_folder, self.config.text_folder, f"{num:05}*"))
 
-        if os.path.exists(html_file) and os.path.exists(parse_file):
-            logging.info(f"skip round {num}")
-            return
+        if len(textual_files) > 0:
+            logging.info(f"skip round {num} because of existing output files: {textual_files}")
+            return 
 
         logging.info(f"start round {num}")
         logging.info(f"number of urls to download: {len(self.urls2download.urls):,}")
