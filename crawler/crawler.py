@@ -327,10 +327,12 @@ class Parser:
             if self.config.filter_for_languages and language not in self.config.languages:
                 logging.debug(f"skip {source_data['url']} because the dominant language {language} is not in the list of desired languages")
 
-            if self.config.filter_for_languages and counts[i] / np.sum(counts) < 0.9:
+            if self.config.filter_for_languages and counts[i] / np.sum(counts) < 0.8:
                 logging.debug(f"skip {source_data['url']} because language {languages} amounts to only {100*counts[i] / np.sum(counts)}% of the data.")
                 return
             
+            segments = filter(lambda x:x["language"] in self.config.languages, segments)
+
             # put text together
             text = "\n".join([s["text"] for s in segments])
 

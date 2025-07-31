@@ -39,12 +39,7 @@ WHERE crawl = 'CC-MAIN-2024-51'
 
 
 
-  srun -K  \
-    --container-mounts=/data:/data,$HOME:$HOME \
-    --container-workdir=$PWD \
-    --container-image=/data/enroot/nvcr.io_nvidia_pytorch_22.05-py3.sqsh \
-    --mem 24GB \
-    start_crawler.sh swa_Latn
+  srun -K --container-mounts=/data:/data,$HOME:$HOME --container-workdir=$PWD --container-image=/data/enroot/nvcr.io_nvidia_pytorch_22.05-py3.sqsh --mem 24GB start_crawler.sh kin_Latn
 
 
 
