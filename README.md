@@ -2,10 +2,20 @@
 
 ## Overview
 
-### Architecture
+### Application Workflow
 
 <img src="/images/flowchart.drawio.png" />
 
+The image shows the workflow of the application.
+
+1. The crawling starts with a list of seed urls that we retrieved from the CommonCrawl.
+2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round.
+3. The parser extracts the clean text. Also, it extracts all links.
+4. Then, the crawling loop starts again. It operates two lists:
+    * URLs2Crawl are the URLs that will be crawled. It is initialized with the SeedURLs and then refilled by the parse step. 
+    * CrawledURLs keeps track of all URLs that already have been crawled, to avoid duplicate crawling.
+5. When the URLs2Crawl list is empty, the finalize step generates the final output data and statistics.
+  
 ## Installation
 
 **Install Git, Python**
