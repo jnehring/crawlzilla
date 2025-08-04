@@ -52,6 +52,8 @@ gzip ../seeds/seeds_kin_Latn.txt
 
 ## Starting the crawler
 
+### Explanation of parameters
+
 ````
 $ python crawler.py -h
 usage: Crawler [-h] [--seed_file SEED_FILE] [--seed_url SEED_URL] --language LANGUAGE
@@ -86,7 +88,7 @@ options:
                         Adjust the logging level
 ```
 
-Standard configuration for a crawler
+### Standard configuration for a crawler
 
 ```
 python3 crawler.py \
@@ -97,7 +99,7 @@ python3 crawler.py \
     --delete_html
 ```
 
-This starts the crawler for a single page and with debug outputs. This is useful for debugging
+### Debug crawl for a single page
 
 ```
 python3 crawler.py \
