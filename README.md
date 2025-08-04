@@ -2,6 +2,14 @@
 
 Web crawler that crawls specific languages only.
 
+1. [Overview](#overview)
+    * [Application Workflow](#application-workflow)
+2. [Installation](#installation)
+3. [Starting the crawler](#starting-the-crawler)
+    * [Explanation of parameters](#explanation-of-parameters)
+    * [Standard configuration for a crawler](#standard-configuration-for-a-crawler)
+    * [Debug crawl for a single page](#debug-crawl-for-a-single-page)
+
 ## Overview
 
 ### Application Workflow
@@ -54,7 +62,7 @@ gzip ../seeds/seeds_kin_Latn.txt
 
 ### Explanation of parameters
 
-````
+```
 $ python crawler.py -h
 usage: Crawler [-h] [--seed_file SEED_FILE] [--seed_url SEED_URL] --language LANGUAGE
                [--start_fresh] [--output_folder OUTPUT_FOLDER] [--num_rounds NUM_ROUNDS]
