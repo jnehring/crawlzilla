@@ -1,4 +1,6 @@
-# Crawler that crawls only specific languages
+# Crawl African Languages
+
+Web crawler that crawls specific languages only.
 
 ## Overview
 
