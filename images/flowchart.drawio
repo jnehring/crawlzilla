@@ -1,0 +1,45 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.6 Chrome/138.0.7204.100 Electron/37.2.3 Safari/537.36" version="28.0.6">
+  <diagram name="Page-1" id="Wxxi-o9Y89LgRyvj-iJX">
+    <mxGraphModel dx="687" dy="604" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-2" value="SeedURLs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="110" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="xSWdN_m0SG9S3BUSPSJ2-3" target="xSWdN_m0SG9S3BUSPSJ2-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-3" value="&lt;b&gt;Crawl&lt;/b&gt;&lt;br&gt;Download HTML" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="190" y="110" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="xSWdN_m0SG9S3BUSPSJ2-4" target="xSWdN_m0SG9S3BUSPSJ2-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="220" />
+              <mxPoint x="240" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="xSWdN_m0SG9S3BUSPSJ2-4" target="xSWdN_m0SG9S3BUSPSJ2-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-4" value="&lt;b&gt;Parse&lt;/b&gt;&lt;br&gt;Extract links&lt;div&gt;Extract text&lt;/div&gt;&lt;div&gt;Language Detection&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="320" y="110" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-6" value="Finalize" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="450" y="110" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-7" value="" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="xSWdN_m0SG9S3BUSPSJ2-2" target="xSWdN_m0SG9S3BUSPSJ2-3">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="340" y="340" as="sourcePoint" />
+            <mxPoint x="390" y="290" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xSWdN_m0SG9S3BUSPSJ2-11" value="Crawl extracted links" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="270" y="190" width="80" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

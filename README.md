@@ -1,5 +1,11 @@
 # Crawler that crawls only specific languages
 
+## Overview
+
+### Architecture
+
+<img src="/images/flowchart.drawio.png" />
+
 ## Installation
 
 **Install Git, Python**
@@ -74,7 +80,9 @@ Standard configuration for a crawler
 python3 crawler.py \
     --output_folder ../outputs/kin_Latn \
     --language kin_Latn \
-    --seed_file ../seeds/seeds_kin_Latn.txt.gz 
+    --seed_file ../seeds/seeds_kin_Latn.txt.gz \
+    --delete_parsed \
+    --delete_html
 ```
 
 This starts the crawler for a single page and with debug outputs. This is useful for debugging
@@ -85,6 +93,7 @@ python3 crawler.py \
     --language kin_Latn \
     --seed_url https://www.kigalitoday.com/amakuru/amakuru-mu-rwanda/article/perezida-kagame-yakiriye-impapuro-za-ambasaderi-mushya-w-u-bushinwa-mu-rwanda \
     --log_level debug \
-    --start_fresh \
-    --num_rounds 1
+    --num_rounds 10 \
+    --delete_parsed \
+    --delete_html
 ```
