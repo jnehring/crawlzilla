@@ -6,7 +6,7 @@ import pickle
 from urllib.parse import urlparse
 import urllib.robotparser
 import logging
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 from datetime import datetime, timedelta
 
 # Set up logging
@@ -147,17 +147,19 @@ class RobotsChecker:
                 "is_valid_robotstxt": False
             }
 
+import argparse
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python robochecks.py <url> [user_agent]")
-        sys.exit(1)
-        
-    url = sys.argv[1]
-    user_agent = sys.argv[2] if len(sys.argv) > 2 else "*"
+    parser = argparse.ArgumentParser(description="Check if a URL is allowed to be crawled by a user agent.")
+    parser.add_argument("url", help="The URL to check.")
+    parser.add_argument("user_agent", nargs="?", default="*", help="The user agent to check for.")
+    parser.add_argument("--disable-robots-check", action="store_true", help="Disable robots.txt checking.")
     
-    checker = RobotsChecker()
+    args = parser.parse_args()
+    
+    checker = RobotsChecker(enabled=not args.disable_robots_check)
     try:
-        result = checker.check_robots(url, user_agent)
+        result = checker.check_robots(args.url, args.user_agent)
         print(json.dumps(result, indent=2))
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
