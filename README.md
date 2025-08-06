@@ -115,7 +115,5 @@ python3 crawler.py \
     --language kin_Latn \
     --seed_url https://www.kigalitoday.com/amakuru/amakuru-mu-rwanda/article/perezida-kagame-yakiriye-impapuro-za-ambasaderi-mushya-w-u-bushinwa-mu-rwanda \
     --log_level debug \
-    --num_rounds 10 \
-    --delete_parsed \
-    --delete_html
+    --num_rounds 10
 ```
