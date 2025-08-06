@@ -1,5 +1,0 @@
-beautifulsoup4==4.13.3
-fasttext==0.9.3
-huggingface_hub==0.29.2
-nltk==3.9.1
-fasttext-numpy2==0.10.4
