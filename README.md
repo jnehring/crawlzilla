@@ -25,7 +25,25 @@ The image shows the workflow of the application.
     * URLs2Crawl are the URLs that will be crawled. It is initialized with the SeedURLs and then refilled by the parse step. 
     * CrawledURLs keeps track of all URLs that already have been crawled, to avoid duplicate crawling.
 5. When the URLs2Crawl list is empty, the finalize step generates the final output data and statistics.
-  
+
+### Output Folder Structure
+
+```
+outputs
+└── kin_Latn                           # One output folder per language / script
+    ├── downloaded_urls.txt            # The list of downloaded urls to avoid downloading the same URL twice
+    ├── urls2download.txt              # It contains one file for each round.
+    ├── html                           # The results of the fetch phase, mostly HTML code. It contains one file for each round
+    │   ├── 00001.json.gz              # It contains one file for each round.
+    │   └── 00002.json.gz
+    ├── parsed                         # The results of the parsing step.
+    │   ├── 00001.json.gz              # It contains one file for each round.
+    │   └── 00002.json.gz
+    ├── textual_outputs                # The generated textual data of each round.
+    │   └── 00001_kin_Latn.txt         # It contains one file for each round.
+    └── domain_language_counter.json   # This is currently not used
+ ```
+
 ## Installation
 
 **Install Git, Python**
