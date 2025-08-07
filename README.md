@@ -1,10 +1,49 @@
-# Crawler that crawls only specific languages
+# Crawl African Languages
+
+Web crawler that crawls specific languages only.
+
+1. [Overview](#overview)
+    * [Application Workflow](#application-workflow)
+    * [Output Folder Structure](#output-folder-structure)
+2. [Installation](#installation)
+3. [Starting the crawler](#starting-the-crawler)
+    * [Explanation of parameters](#explanation-of-parameters)
+    * [Standard configuration for a crawler](#standard-configuration-for-a-crawler)
+    * [Debug crawl for a single page](#debug-crawl-for-a-single-page)
 
 ## Overview
 
-### Architecture
+### Application Workflow
 
 <img src="/images/flowchart.drawio.png" />
+
+The image shows the workflow of the application.
+
+1. The crawling starts with a list of seed urls that we retrieved from the CommonCrawl.
+2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round.
+3. The parser extracts the clean text. Also, it extracts all links.
+4. Then, the crawling loop starts again. It operates two lists:
+    * URLs2Crawl are the URLs that will be crawled. It is initialized with the SeedURLs and then refilled by the parse step. 
+    * CrawledURLs keeps track of all URLs that already have been crawled, to avoid duplicate crawling.
+5. When the URLs2Crawl list is empty, the finalize step generates the final output data and statistics.
+
+### Output Folder Structure
+
+```
+outputs
+└── kin_Latn                           # One output folder per language / script
+    ├── downloaded_urls.txt            # The list of downloaded urls to avoid downloading the same URL twice
+    ├── urls2download.txt              # It contains one file for each round.
+    ├── html                           # The results of the fetch phase, mostly HTML code. It contains one file for each round
+    │   ├── 00001.json.gz              # It contains one file for each round.
+    │   └── 00002.json.gz
+    ├── parsed                         # The results of the parsing step.
+    │   ├── 00001.json.gz              # It contains one file for each round.
+    │   └── 00002.json.gz
+    ├── textual_outputs                # The generated textual data of each round.
+    │   └── 00001_kin_Latn.txt         # It contains one file for each round.
+    └── domain_language_counter.json   # This is currently not used
+ ```
 
 ## Installation
 
@@ -40,7 +79,9 @@ gzip ../seeds/seeds_kin_Latn.txt
 
 ## Starting the crawler
 
-````
+### Explanation of parameters
+
+```
 $ python crawler.py -h
 usage: Crawler [-h] [--seed_file SEED_FILE] [--seed_url SEED_URL] --language LANGUAGE
                [--start_fresh] [--output_folder OUTPUT_FOLDER] [--num_rounds NUM_ROUNDS]
@@ -74,7 +115,7 @@ options:
                         Adjust the logging level
 ```
 
-Standard configuration for a crawler
+### Standard configuration for a crawler
 
 ```
 python3 crawler.py \
@@ -85,7 +126,7 @@ python3 crawler.py \
     --delete_html
 ```
 
-This starts the crawler for a single page and with debug outputs. This is useful for debugging
+### Debug crawl for a single page
 
 ```
 python3 crawler.py \
@@ -93,7 +134,5 @@ python3 crawler.py \
     --language kin_Latn \
     --seed_url https://www.kigalitoday.com/amakuru/amakuru-mu-rwanda/article/perezida-kagame-yakiriye-impapuro-za-ambasaderi-mushya-w-u-bushinwa-mu-rwanda \
     --log_level debug \
-    --num_rounds 10 \
-    --delete_parsed \
-    --delete_html
+    --num_rounds 10
 ```
