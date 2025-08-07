@@ -4,6 +4,7 @@ Web crawler that crawls specific languages only.
 
 1. [Overview](#overview)
     * [Application Workflow](#application-workflow)
+    * [Output Folder Structure](#output-folder-structure)
 2. [Installation](#installation)
 3. [Starting the crawler](#starting-the-crawler)
     * [Explanation of parameters](#explanation-of-parameters)
