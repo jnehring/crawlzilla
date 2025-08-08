@@ -17,15 +17,18 @@ Web crawler that crawls specific languages only.
 
 <img src="/images/flowchart.drawio.png" />
 
-The image shows the workflow of the application.
+The image shows the workflow of the application. All this logic is implemented in `crawler/crawler.py`.
 
 1. The crawling starts with a list of seed urls that we retrieved from the CommonCrawl.
-2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round.
-3. The parser extracts the clean text. Also, it extracts all links.
-4. Then, the crawling loop starts again. It operates two lists:
-    * URLs2Crawl are the URLs that will be crawled. It is initialized with the SeedURLs and then refilled by the parse step. 
-    * CrawledURLs keeps track of all URLs that already have been crawled, to avoid duplicate crawling.
-5. When the URLs2Crawl list is empty, the finalize step generates the final output data and statistics.
+2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round. The crawling loop is implemented in function `main()` and the method `round` in class `Crawler`. 
+3. The list URLs2Download stores all URLs that the system should crawl and is initialized with the SeedURLs. The crawler serializes this disk to the file `urls2download.txt`. This logic is implemented by the class `URLs2Download`.
+4. The fetch step downloads all URLs of a round. The class `HTMLStore` implements this logic.
+5. The parser step contains multiple subtstep. First, it extracts the clean text using the class `HTML2Text`.
+6. The parser also performs [language detection with FastText](https://huggingface.co/facebook/fasttext-language-identification).
+7. The parser also extracts all URLs from the HTML codes in method `extract_urls` of class `Parser`.
+8. The list `DownloadedURLs` keeps track of all URLs that have already been crawled to avoid duplicate crawling. It acts like a filter in step 7 - extract links. It is implemented in class `DownloadedURLs` and serialized to disk in file `urls2download.txt`.
+9. The extracted URLs are fed back to URLs2Download and the crawling loop begins the next round.
+10. When the URLs2Crawl list is empty or the configured number of rounds is reached, the finalize step generates the final output data and statistics. The finalize step is implemented outside the crawler in `crawler/finalize_data.py`.
 
 ### Output Folder Structure
 
