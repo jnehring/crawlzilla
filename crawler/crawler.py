@@ -60,9 +60,6 @@ class CrawlerConfig:
         self.log_level = log_level
         self.seed_url = None
 
-        self.domain_language_filter_n = 10
-        self.domain_language_filter_ratio = 0.2
-
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
@@ -140,72 +137,6 @@ class HTMLStore:
 
         t = time.time() - start_time
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
-
-
-class DomainLanguageCounter:
-    """The DomainLanguageCounter should compute how many urls with the desired languages are inside of a domain. Currently, it is not in use.
-    """
-    def __init__(self, config : CrawlerConfig):
-        self.outfile = os.path.join(config.output_folder, "domain_language_counter.json")
-        self.domains = {}
-        self.domain_blacklist = set()
-        self.config = config
-
-    def add(self, domain2language):
-
-        for domain in domain2language.keys():
-
-            # if domain in self.domain_blacklist:
-            #     return
-
-            if domain not in self.domains.keys():
-                self.domains[domain] = {}
-
-            for language, count in domain2language[domain].items():
-
-                if language not in self.domains[domain].keys():
-                    self.domains[domain][language] = 0
-                
-                self.domains[domain][language] += count
-
-                if sum(self.domains[domain].values()) >= self.config.domain_language_filter_n:
-                    n1 = 0
-                    n2 = 0
-                    for language, count in self.domains[domain].items():
-                        if language in self.config.languages:
-                            n1 += 1
-                        else:
-                            n2 += 1
-                    
-                    if n2 > 0 and n1 / n2 < self.config.domain_language_filter_ratio:
-                        self.domain_blacklist.add(domain)
-
-    def is_blacklisted(self, url):
-        domain = urlparse(url).netloc
-        return domain in self.domain_blacklist
-
-    def write(self):
-        with open(self.outfile, "w") as f:
-            data = {
-                "blacklist": list(self.domain_blacklist),
-                "domains": self.domains
-            }
-            f.write(json.dumps(data))
-
-    def read_from_file(self):
-        if os.path.exists(self.outfile):
-            with open(self.outfile, "r") as f:
-                data = json.load(f)
-                self.domain_blacklist = set(data["blacklist"])
-                self.domains = data["domains"]
-
-    def filter_urls(self, urls):
-        filtered_urls = []
-        for url in urls:
-            domain = urlparse(url).netloc
-            if not self.is_blacklisted(domain):
-                filtered_urls.append(url)
-        return filtered_urls, len(urls) - len(filtered_urls)
 
 
 class HTML2Text:
@@ -323,26 +254,25 @@ class Parser:
             if len(languages) == 0:
                 return
             
-            # if there are multiple languages in the document, only accept documents that have more than 90% in a single language
+            # if there are multiple languages in the document, only accept documents that have more than 80% in the desired languages
             languages, counts = np.unique(languages, return_counts=True)
-            i = np.argmax(counts)
-            language = languages[i]
-            if self.config.filter_for_languages and language not in self.config.languages:
-                logging.debug(f"skip {source_data['url']} because the dominant language {language} is not in the list of desired languages")
+            count_dict = {languages[j] : counts[j] for j in range(len(counts))}
 
-            if self.config.filter_for_languages and counts[i] / np.sum(counts) < 0.8:
-                logging.debug(f"skip {source_data['url']} because language {languages} amounts to only {100*counts[i] / np.sum(counts)}% of the data.")
+            desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+            frac = desired_language_count / np.sum(list(count_dict.values()))
+            
+            if self.config.filter_for_languages and frac < 0.8:
+                logging.debug(f"skip {source_data['url']} because less than 80% of the data amount to the target language. Languages: {count_dict}")
                 return
             
-            segments = filter(lambda x:x["language"] in self.config.languages, segments)
+            segments = list(filter(lambda x:x["language"] in self.config.languages, segments))
 
             # put text together
             text = "\n".join([s["text"] for s in segments])
 
             parsed_data = {
                 "url": source_data["url"],
-                "language": language,
-                "text": text
+                "segments": segments
             }
 
             page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
@@ -392,28 +322,22 @@ class Parser:
                             for url in parsed_data["parsed_urls"]:
                                 urls.add(url)
 
-                            domain = urlparse(parsed_data["url"]).netloc
-                            if domain not in domains2languages:
-                                domains2languages[domain] = {}
-                            language = parsed_data["language"]
-                            if language not in domains2languages[domain]:
-                                domains2languages[domain][language] = 1
-                            else:
-                                domains2languages[domain][language] += 1
+                            for segment in parsed_data["segments"]:
 
-                            if parsed_data["language"] not in writers.keys():
-                                outfolder = os.path.join(self.config.output_folder, self.config.text_folder)
-                                if not os.path.exists(outfolder):
-                                    os.mkdir(outfolder)
+                                if segment["language"] not in writers.keys():
+                                    outfolder = os.path.join(self.config.output_folder, self.config.text_folder)
+                                    if not os.path.exists(outfolder):
+                                        os.mkdir(outfolder)
+                                    
+                                    outfile_clean = os.path.basename(infile)
+                                    outfile_clean = outfile_clean[0:outfile_clean.find(".")] + "_" + segment["language"] + ".txt"
+                                    outfile_clean = os.path.join(outfolder, outfile_clean)
+                                    writers[segment["language"]] = open(outfile_clean, "w")
                                 
-                                outfile_clean = os.path.basename(infile)
-                                outfile_clean = outfile_clean[0:outfile_clean.find(".")] + "_" + parsed_data["language"] + ".txt"
-                                outfile_clean = os.path.join(outfolder, outfile_clean)
-                                writers[parsed_data["language"]] = open(outfile_clean, "w")
-                            
-                            writers[parsed_data["language"]].write(parsed_data["text"])
-                            writers[parsed_data["language"]].write("\n")
-                            logging.debug(f"wrote a segment of textual data for language {parsed_data['language']}")
+                                writers[segment["language"]].write(segment["text"])
+                                writers[segment["language"]].write("\n")
+
+                            logging.debug(f"wrote {len(parsed_data['segments'])} segments from {parsed_data['url']}")
 
 
         finally:
@@ -421,7 +345,7 @@ class Parser:
                 writer.close()
                         
                     
-        return outfile, urls, domains2languages
+        return outfile, urls
 
     # get all urls from a website
     def extract_urls(self, soup : BeautifulSoup, source_url : str):
@@ -516,15 +440,13 @@ class Crawler:
         html_store : HTMLStore,
         parser : Parser,
         urls2download : URLs2Download,
-        downloaded_urls : DownloadedURLs,
-        domain_language_counter : DomainLanguageCounter):
+        downloaded_urls : DownloadedURLs):
 
         self.config : CrawlerConfig = config
         self.html_store : HTMLStore = html_store
         self.parser : Parser = parser
         self.urls2download : URLs2Download = urls2download
         self.downloaded_urls : DownloadedURLs = downloaded_urls
-        self.domain_language_counter : DomainLanguageCounter = domain_language_counter
 
     def round(self, num):
         filename = f"{num:05}.json.gz"
@@ -557,10 +479,6 @@ class Crawler:
                 if url in self.downloaded_urls.urls or len(url.strip()) == 0:
                     continue
 
-                # do not download blacklisted domains
-                if self.domain_language_counter.is_blacklisted(url):
-                    continue
-
                 urls2download.append(url)
 
             self.html_store.download_urls(urls2download)
@@ -577,9 +495,7 @@ class Crawler:
         if not os.path.exists(parse_file):
 
             logging.info(f"parsing round {num}")
-            tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
-            self.domain_language_counter.add(domains2languages)
-            self.domain_language_counter.write()
+            tmp_file, new_urls = self.parser.parse_json(html_file)
             
             os.rename(tmp_file, parse_file)
 
@@ -611,7 +527,7 @@ def parse_args(config):
     
     parser.add_argument('--seed_file', default=None, type=str, help="Seed file")
     parser.add_argument('--seed_url', required=False, type=str, help="Start with a single seed url. This overwrites --seed_file. It is used for debugging.")
-    parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script.")
+    parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script. You can crawl multiple languages together by separating them with a comma, e.g., kin_Latn, run_Latn")
     parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
     parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
     parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse. Set to -1 run until there are no more URLs.")
@@ -634,7 +550,7 @@ def parse_args(config):
     config.round_size = args.round_size
     config.download_batch_size = args.download_batch_size
     config.download_n_threads = args.download_n_threads
-    config.languages = [args.language.strip()]
+    config.languages = args.language.strip().split(",")
     config.log_level = args.log_level
     config.seed_url = args.seed_url
     config.delete_parsed = args.delete_parsed
@@ -682,16 +598,21 @@ def main():
     # init all components
     html_store = HTMLStore(config)
 
-    domain_language_counter : DomainLanguageCounter = DomainLanguageCounter(config)
-    domain_language_counter.read_from_file()
-
     urls2download = URLs2Download([], config)
     if not urls2download.file_exists():
 
         if config.seed_url is not None:
             urls = [config.seed_url.strip()]
         else:
-            urls = [f.replace("\n", "") for f in gzip.open(config.seed_file, "rt").readlines()]
+            if config.seed_file[-3:] == ".gz":
+                urls = gzip.open(config.seed_file, "rt").readlines()
+            else:
+                urls = open(config.seed_file, "r").readlines()
+
+            urls = [f.replace("\n", "") for f in urls]
+            urls = list(filter(lambda url : len(url.strip()) > 0, urls))
+
+            logging.info(f"initialize crawler with {len(urls)} seed urls")
         random.shuffle(urls)
         urls2download.urls = urls
     else:
@@ -701,7 +622,7 @@ def main():
     downloaded_urls.read()
 
     parser = Parser(config)
-    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls, domain_language_counter)
+    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls)
 
     # start crawling
     round = 1
