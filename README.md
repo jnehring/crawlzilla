@@ -133,9 +133,11 @@ python3 crawler.py \
 
 ```
 python3 crawler.py \
-    --output_folder ../outputs/kin_Latn \
-    --language kin_Latn \
-    --seed_url https://www.kigalitoday.com/amakuru/amakuru-mu-rwanda/article/perezida-kagame-yakiriye-impapuro-za-ambasaderi-mushya-w-u-bushinwa-mu-rwanda \
-    --log_level debug \
-    --num_rounds 1
+    --output_folder ../outputs/kin_Latn \       # output folder
+    --language kin_Latn \                       # specify the language
+    --seed_url https://www.kigalitoday.com \    # specify a single url for download
+    --log_level debug \                         # enable debug logging
+    --dont_compress_outputs \                   # make it easier to look into the html and parsed files 
+    --num_rounds 1 \                            # crawl only for a single round
+
 ```

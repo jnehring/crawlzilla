@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import os
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Dict
 import requests
 import re
 import json
@@ -34,13 +34,17 @@ class CrawlerConfig:
         num_rounds : int = -1,
         download_batch_size : int = 250,
         download_n_threads = 30,
-        accept_content_types : List[str] = ["text/html"],
+        accept_content_types : Dict[str,str] = {
+            "text/html": "html",
+            "application/pdf": "pdf"
+        },
         request_timeout : int = 12,
         download_sleep_time : int = 0.1,
         filter_for_languages : bool = True,
         log_level : str = "info",
         delete_parsed : bool = False,
-        delete_html : bool = False
+        delete_html : bool = False,
+        dont_compress_outputs : bool = True
         ):
 
         self.output_folder : str = output_folder
@@ -52,13 +56,14 @@ class CrawlerConfig:
         self.parsed_folder : str = parsed_folder
         self.round_size : int = round_size
         self.num_rounds : int = num_rounds
-        self.accept_content_types : List[str] = accept_content_types
+        self.accept_content_types : Dict[str,str] = accept_content_types
         self.request_timeout : int = request_timeout
         self.download_sleep_time : int = download_sleep_time
         self.text_folder : str = "textual_outputs"
         self.filter_for_languages = filter_for_languages
-        self.log_level = log_level
-        self.seed_url = None
+        self.log_level : str = log_level
+        self.seed_url : str = None
+        self.dont_compress_outputs : bool = dont_compress_outputs
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
@@ -79,13 +84,15 @@ def download(args):
             if "content-type" in json_data["headers"].keys():
 
                 valid = False
-                for ct in config.accept_content_types:
+                for ct in config.accept_content_types.keys():
                     if json_data["headers"]["content-type"][0:len(ct)] == ct:
                         valid = True
 
                 if valid:
                     r.encoding = r.apparent_encoding
                     json_data["html"] = r.text
+            else:
+                logging.debug(f"skip {url} because it does not specify a content-type header")
 
     except Exception as e:
         json_data["status"] = -1
@@ -113,7 +120,11 @@ class HTMLStore:
 
     # open the file writer in the beginning of each round
     def init_round(self, dump_file):
-        self.dump_writer = gzip.open(dump_file, "wt")
+
+        if self.config.dont_compress_outputs:
+            self.dump_writer = open(dump_file, "w")
+        else:
+            self.dump_writer = gzip.open(dump_file, "wt")
 
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
@@ -251,19 +262,18 @@ class Parser:
             #logging.debug(f"detected languages from {source_data['url']}: {languages}")
 
             # do not continue if there is no text and no language
-            if len(languages) == 0:
-                return
+            if len(languages) > 0:
             
-            # if there are multiple languages in the document, only accept documents that have more than 80% in the desired languages
-            languages, counts = np.unique(languages, return_counts=True)
-            count_dict = {languages[j] : counts[j] for j in range(len(counts))}
+                # if there are multiple languages in the document, only accept documents that have more than 80% in the desired languages
+                languages, counts = np.unique(languages, return_counts=True)
+                count_dict = {languages[j] : counts[j] for j in range(len(counts))}
 
-            desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
-            frac = desired_language_count / np.sum(list(count_dict.values()))
-            
-            if self.config.filter_for_languages and frac < 0.8:
-                logging.debug(f"skip {source_data['url']} because less than 80% of the data amount to the target language. Languages: {count_dict}")
-                return
+                desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+                frac = desired_language_count / np.sum(list(count_dict.values()))
+                
+                if self.config.filter_for_languages and frac < 0.8:
+                    logging.debug(f"skip {source_data['url']} because less than 80% of the data amount to the target language. Languages: {count_dict}")
+                    return
             
             segments = list(filter(lambda x:x["language"] in self.config.languages, segments))
 
@@ -306,43 +316,55 @@ class Parser:
 
         writers = {}
         try:
-            with gzip.open(infile, "rt") as reader:
-                with gzip.open(outfile, "wt") as writer:
-                    for batch in iterate_batches(reader):
-                        data = pool.map(self.parse_line, batch)
+            if infile[-3:] == ".gz":
+                reader = gzip.open(infile, "rt")
+            else:
+                reader = open(infile, "r")
 
-                        for parsed_data in data:
-                            if parsed_data is None:
-                                continue
+            if self.config.dont_compress_outputs:
+                writer = open(outfile, "w")
+            else:
+                writer = gzip.open(outfile, "wt")
 
-                            json_data = json.dumps(parsed_data)
-                            writer.write(json_data)
-                            writer.write("\n")
+            try:
+                for batch in iterate_batches(reader):
+                    data = pool.map(self.parse_line, batch)
 
-                            for url in parsed_data["parsed_urls"]:
-                                urls.add(url)
+                    for parsed_data in data:
+                        if parsed_data is None:
+                            continue
 
-                            for segment in parsed_data["segments"]:
+                        json_data = json.dumps(parsed_data)
+                        writer.write(json_data)
+                        writer.write("\n")
 
-                                if segment["language"] not in writers.keys():
-                                    outfolder = os.path.join(self.config.output_folder, self.config.text_folder)
-                                    if not os.path.exists(outfolder):
-                                        os.mkdir(outfolder)
-                                    
-                                    outfile_clean = os.path.basename(infile)
-                                    outfile_clean = outfile_clean[0:outfile_clean.find(".")] + "_" + segment["language"] + ".txt"
-                                    outfile_clean = os.path.join(outfolder, outfile_clean)
-                                    writers[segment["language"]] = open(outfile_clean, "w")
+                        for url in parsed_data["parsed_urls"]:
+                            urls.add(url)
+
+                        for segment in parsed_data["segments"]:
+
+                            if segment["language"] not in writers.keys():
+                                outfolder = os.path.join(self.config.output_folder, self.config.text_folder)
+                                if not os.path.exists(outfolder):
+                                    os.mkdir(outfolder)
                                 
-                                writers[segment["language"]].write(segment["text"])
-                                writers[segment["language"]].write("\n")
+                                outfile_clean = os.path.basename(infile)
+                                outfile_clean = outfile_clean[0:outfile_clean.find(".")] + "_" + segment["language"] + ".txt"
+                                outfile_clean = os.path.join(outfolder, outfile_clean)
+                                writers[segment["language"]] = open(outfile_clean, "w")
+                            
+                            writers[segment["language"]].write(segment["text"])
+                            writers[segment["language"]].write("\n")
 
-                            logging.debug(f"wrote {len(parsed_data['segments'])} segments from {parsed_data['url']}")
-
+                        logging.debug(f"wrote {len(parsed_data['segments'])} segments from {parsed_data['url']}")
+            finally:
+                writer.close()
 
         finally:
             for writer in writers.values():
                 writer.close()
+            if reader is not None:
+                reader.close()
                         
                     
         return outfile, urls
@@ -360,7 +382,7 @@ class Parser:
 
 
         for a in soup.find_all("a"):
-            
+
             if not a.has_attr("href"):
                 continue
             href = a["href"]
@@ -449,7 +471,11 @@ class Crawler:
         self.downloaded_urls : DownloadedURLs = downloaded_urls
 
     def round(self, num):
-        filename = f"{num:05}.json.gz"
+        filename = f"{num:05}.json"
+
+        if not self.config.dont_compress_outputs:
+            filename += ".gz"
+
         html_file = os.path.join(self.config.output_folder, self.config.html_folder, filename)
         parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
         textual_files = glob.glob(os.path.join(self.config.output_folder, self.config.text_folder, f"{num:05}*"))
@@ -537,6 +563,7 @@ def parse_args(config):
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
+    parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
 
     args = parser.parse_args()
 
@@ -555,6 +582,7 @@ def parse_args(config):
     config.seed_url = args.seed_url
     config.delete_parsed = args.delete_parsed
     config.delete_html = args.delete_html
+    config.dont_compress_outputs = args.dont_compress_outputs
 
     return args
 
@@ -626,6 +654,7 @@ def main():
 
     # start crawling
     round = 1
+
     while len(urls2download.urls) > 0:
         if config.num_rounds > 0 and config.num_rounds < round:
             break
