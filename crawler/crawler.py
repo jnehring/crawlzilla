@@ -20,6 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import numpy as np
 import glob
+import fitz
+import traceback
 
 @dataclass
 class CrawlerConfig:
@@ -36,7 +38,7 @@ class CrawlerConfig:
         download_n_threads = 30,
         accept_content_types : Dict[str,str] = {
             "text/html": "html",
-            "application/pdf": "pdf"
+            # "application/pdf": "pdf"
         },
         request_timeout : int = 12,
         download_sleep_time : int = 0.1,
@@ -84,19 +86,38 @@ def download(args):
             if "content-type" in json_data["headers"].keys():
 
                 valid = False
+                parser_type = None
                 for ct in config.accept_content_types.keys():
                     if json_data["headers"]["content-type"][0:len(ct)] == ct:
                         valid = True
+                        parser_type = config.accept_content_types[ct]
 
                 if valid:
                     r.encoding = r.apparent_encoding
-                    json_data["html"] = r.text
+
+                    if parser_type == "html":
+                        json_data["html"] = r.text
+
+                    elif parser_type == "pdf":
+                        
+                        doc = fitz.open(stream=r.content, filetype="pdf")
+
+                        text = []
+                        for page in doc:
+                            for block in page.get_text("blocks"):
+                                text.append(block[4])
+
+                        json_data["text"] = text
+
+                else:
+                    logging.debug(f"skip {url} because of undesired content-type header {ct}")
             else:
                 logging.debug(f"skip {url} because it does not specify a content-type header")
 
     except Exception as e:
         json_data["status"] = -1
         json_data["error"] = str(e)
+        logging.debug(e)
 
     contains_body = "html" in json_data.keys()
     json_data = json.dumps(json_data)
@@ -237,6 +258,66 @@ class Parser:
         self.language_identification = fasttext.load_model(model_path)
         self.html2text = HTML2Text()
 
+    def parse_segments(self, paragraphs : List[str], url : str):
+        
+        segments = []
+        for paragraph in paragraphs:
+            lang = self.language_identification.predict(paragraph)[0][0]
+            lang = lang[len("__label__"):]
+            segment = {
+                "text": paragraph,
+                "language": lang
+            }
+            segments.append(segment)
+        #logging.debug(f"extracted segments from {source_data['url']}: {segments}")
+
+        languages = list([s["language"] for s in segments])
+        #logging.debug(f"detected languages from {source_data['url']}: {languages}")
+
+        # do not continue if there is no text and no language
+        if len(languages) > 0:
+        
+            # if there are multiple languages in the document, only accept documents that have more than 80% in the desired languages
+            languages, counts = np.unique(languages, return_counts=True)
+            count_dict = {languages[j] : counts[j] for j in range(len(counts))}
+
+            desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+            frac = desired_language_count / np.sum(list(count_dict.values()))
+            
+            if self.config.filter_for_languages and frac < 0.8:
+                logging.debug(f"skip {url} because less than 80% of the data amount to the target language. Languages: {count_dict}")
+                return []
+        
+        segments = list(filter(lambda x:x["language"] in self.config.languages, segments))
+        return segments
+        
+    def parse_html(self, source_data):
+        soup = BeautifulSoup(source_data["html"], "html.parser")
+
+        segments = list(self.html2text.extract_text(soup))
+        segments = self.parse_segments(segments, source_data["url"])
+
+        parsed_data = {
+            "url": source_data["url"],
+            "segments": segments
+        }
+
+        page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
+        parsed_data["parsed_urls"] = list(page_urls)
+
+        return parsed_data
+    
+    def parse_text(self, source_data):
+        texts = []
+        for block in source_data["text"]:
+            texts = self.html2text.clean_text(block)
+            if texts is None:
+                continue
+            print(texts)
+            print("-")
+
+        sys.exit(0)
+
     def parse_line(self, line):
         try:
             source_data = json.loads(line)
@@ -246,49 +327,11 @@ class Parser:
                 logging.debug(f"skip parsing of {source_data['url']} because of http status code {source_data['status']}")
                 return
 
-            soup = BeautifulSoup(source_data["html"], "html.parser")
-            segments = []
-            for paragraph in self.html2text.extract_text(soup):
-                lang = self.language_identification.predict(paragraph)[0][0]
-                lang = lang[len("__label__"):]
-                segment = {
-                    "text": paragraph,
-                    "language": lang
-                }
-                segments.append(segment)
-            #logging.debug(f"extracted segments from {source_data['url']}: {segments}")
+            if "html" in source_data.keys():
+                return self.parse_html(source_data)
+            elif "text" in source_data.keys():
+                return self.parse_text(source_data)
 
-            languages = list([s["language"] for s in segments])
-            #logging.debug(f"detected languages from {source_data['url']}: {languages}")
-
-            # do not continue if there is no text and no language
-            if len(languages) > 0:
-            
-                # if there are multiple languages in the document, only accept documents that have more than 80% in the desired languages
-                languages, counts = np.unique(languages, return_counts=True)
-                count_dict = {languages[j] : counts[j] for j in range(len(counts))}
-
-                desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
-                frac = desired_language_count / np.sum(list(count_dict.values()))
-                
-                if self.config.filter_for_languages and frac < 0.8:
-                    logging.debug(f"skip {source_data['url']} because less than 80% of the data amount to the target language. Languages: {count_dict}")
-                    return
-            
-            segments = list(filter(lambda x:x["language"] in self.config.languages, segments))
-
-            # put text together
-            text = "\n".join([s["text"] for s in segments])
-
-            parsed_data = {
-                "url": source_data["url"],
-                "segments": segments
-            }
-
-            page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
-            parsed_data["parsed_urls"] = list(page_urls)
-
-            return parsed_data
 
         except Exception as e:
             logging.exception(e)
