@@ -1,4 +1,4 @@
-# Crawl African Languages
+# Crawlzilla
 
 Web crawler that crawls specific languages only.
 
