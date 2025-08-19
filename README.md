@@ -123,7 +123,7 @@ options:
 ```
 python3 crawler.py \
     --output_folder ../outputs/kin_Latn \
-    --language kin_Latn \
+    --language kin_Latn,run_Latn \
     --seed_file ../seeds/seeds_kin_Latn.txt.gz \
     --delete_parsed \
     --delete_html
