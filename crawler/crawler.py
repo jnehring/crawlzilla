@@ -23,6 +23,8 @@ import glob
 import fitz
 import traceback
 
+from extract_text import HTML2Text
+
 @dataclass
 class CrawlerConfig:
     
@@ -46,7 +48,9 @@ class CrawlerConfig:
         log_level : str = "info",
         delete_parsed : bool = False,
         delete_html : bool = False,
-        dont_compress_outputs : bool = True
+        dont_compress_outputs : bool = False,
+        seed_url : str = None,
+        start_fresh : bool = False
         ):
 
         self.output_folder : str = output_folder
@@ -64,9 +68,12 @@ class CrawlerConfig:
         self.text_folder : str = "textual_outputs"
         self.filter_for_languages = filter_for_languages
         self.log_level : str = log_level
-        self.seed_url : str = None
+        self.seed_url : str = seed_url
         self.dont_compress_outputs : bool = dont_compress_outputs
-
+        self.start_fresh : bool = start_fresh
+        self.delete_parsed : bool = delete_parsed
+        self.delete_html : bool = delete_html
+        
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
@@ -100,13 +107,6 @@ def download(args):
 
                     elif parser_type == "pdf":
                         
-                        doc = fitz.open(stream=r.content, filetype="pdf")
-
-                        text = []
-                        for page in doc:
-                            for block in page.get_text("blocks"):
-                                text.append(block[4])
-
                         json_data["text"] = text
 
                 else:
@@ -171,80 +171,6 @@ class HTMLStore:
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
 
 
-class HTML2Text:
-    """Convert HTML code to text
-    """
-    def __init__(self):
-        self.replace_consecutive_whitespace = re.compile(r'\s+')
-        self.nodeTypes = set(["p", "span", "h1", "h2", "h3", "h4", "h5", "h6"])
-
-    def iterate_nodes(self, parent):
-
-        if not "contents" in parent.__dict__.keys():
-            return
-
-        for child in parent.contents:
-            if child.name in self.nodeTypes:
-                yield child
-            else:
-                for node in self.iterate_nodes(child):
-                    yield node
-
-    def clean_text(self, text):
-
-        lines = []
-        for line in text.split("\n"):
-            line = line.strip()
-
-            if len(line) == 0:
-                continue
-
-            if len(line) == 0:
-                continue
-
-            # needs to have a minimum length
-            if len(line) < 50:
-                continue
-
-            # needs to contain at least one sentence marks
-            sentence_marks = ".,!?"
-            counts = sum([line.count(x) for x in sentence_marks])
-
-            # needs to have a ratio of upper / lower characters
-            lower = "abcdefghijklmnobqrstuvwxyz"
-            upper = lower.upper()
-
-            lower_ratio = sum(line.count(x) for x in lower) / len(line)
-            upper_ratio = sum(line.count(x) for x in upper) / len(line)
-
-            if lower_ratio > 0.95 or upper_ratio > 0.2:
-                continue
-
-            # should not end with ...
-            needle = "..."
-            if line[-3:] == needle:
-                continue
-
-            line = self.replace_consecutive_whitespace.sub(" ", line)
-
-            lines.append(line)
-
-        if len(lines) == 0:
-            return None
-        else:
-            lines = list(set(lines))
-            return "\n".join(lines)
-            
-    def extract_text(self, soup):
-        texts = []
-        for node in self.iterate_nodes(soup):
-            text = self.clean_text(node.text)
-            if text is not None:
-                for line in text.split("\n"):
-                    texts.append(line)
-        return texts
-
-
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
 
@@ -281,8 +207,18 @@ class Parser:
             languages, counts = np.unique(languages, return_counts=True)
             count_dict = {languages[j] : counts[j] for j in range(len(counts))}
 
-            desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
-            frac = desired_language_count / np.sum(list(count_dict.values()))
+            # check if it has a desired language
+            has_desired_language = False
+            for lang in self.config.languages:
+                if lang in count_dict.keys():
+                    has_desired_language = True
+                    break
+
+            if has_desired_language:
+                desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+                frac = desired_language_count / np.sum(list(count_dict.values()))
+            else:
+                frac = 0.0
             
             if self.config.filter_for_languages and frac < 0.8:
                 logging.debug(f"skip {url} because less than 80% of the data amount to the target language. Languages: {count_dict}")
@@ -648,14 +584,11 @@ def init_logging(config):
         ]
     )
 
-def main():
+def start_crawler(config):
 
     random.seed(0)
 
-    config = CrawlerConfig()
-    args = parse_args(config)
-
-    if args.start_fresh:
+    if config.start_fresh:
         if os.path.exists(config.output_folder):
             shutil.rmtree(config.output_folder)
 
@@ -706,4 +639,7 @@ def main():
         round += 1
 
 if __name__ == "__main__":
-    main()
+
+    config = CrawlerConfig()
+    parse_args(config)
+    start_crawler(config)
