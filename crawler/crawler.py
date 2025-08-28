@@ -20,6 +20,8 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import numpy as np
 import glob
+#robochecks
+from robochecks import RobotsChecker
 import fitz
 import traceback
 
@@ -48,6 +50,7 @@ class CrawlerConfig:
         log_level : str = "info",
         delete_parsed : bool = False,
         delete_html : bool = False,
+        robots_check: bool = True, #robochecks
         dont_compress_outputs : bool = False,
         seed_url : str = None,
         start_fresh : bool = False
@@ -73,7 +76,9 @@ class CrawlerConfig:
         self.start_fresh : bool = start_fresh
         self.delete_parsed : bool = delete_parsed
         self.delete_html : bool = delete_html
-        
+        self.robots_check = robots_check #robochecks
+        self.domain_language_filter_n = 10
+        self.domain_language_filter_ratio = 0.2
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
@@ -171,6 +176,72 @@ class HTMLStore:
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
 
 
+class DomainLanguageCounter:
+    """The DomainLanguageCounter should compute how many urls with the desired languages are inside of a domain. Currently, it is not in use.
+    """
+    def __init__(self, config : CrawlerConfig):
+        self.outfile = os.path.join(config.output_folder, "domain_language_counter.json")
+        self.domains = {}
+        self.domain_blacklist = set()
+        self.config = config
+
+    def add(self, domain2language):
+
+        for domain in domain2language.keys():
+
+            # if domain in self.domain_blacklist:
+            #     return
+
+            if domain not in self.domains.keys():
+                self.domains[domain] = {}
+
+            for language, count in domain2language[domain].items():
+
+                if language not in self.domains[domain].keys():
+                    self.domains[domain][language] = 0
+                
+                self.domains[domain][language] += count
+
+                if sum(self.domains[domain].values()) >= self.config.domain_language_filter_n:
+                    n1 = 0
+                    n2 = 0
+                    for language, count in self.domains[domain].items():
+                        if language in self.config.languages:
+                            n1 += 1
+                        else:
+                            n2 += 1
+                    
+                    if n2 > 0 and n1 / n2 < self.config.domain_language_filter_ratio:
+                        self.domain_blacklist.add(domain)
+
+    def is_blacklisted(self, url):
+        domain = urlparse(url).netloc
+        return domain in self.domain_blacklist
+
+    def write(self):
+        with open(self.outfile, "w") as f:
+            data = {
+                "blacklist": list(self.domain_blacklist),
+                "domains": self.domains
+            }
+            f.write(json.dumps(data))
+
+    def read_from_file(self):
+        if os.path.exists(self.outfile):
+            with open(self.outfile, "r") as f:
+                data = json.load(f)
+                self.domain_blacklist = set(data["blacklist"])
+                self.domains = data["domains"]
+
+    def filter_urls(self, urls):
+        filtered_urls = []
+        for url in urls:
+            domain = urlparse(url).netloc
+            if not self.is_blacklisted(domain):
+                filtered_urls.append(url)
+        return filtered_urls, len(urls) - len(filtered_urls)
+
+
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
 
@@ -183,6 +254,7 @@ class Parser:
         model_path = hf_hub_download(repo_id="facebook/fasttext-language-identification", filename="model.bin")
         self.language_identification = fasttext.load_model(model_path)
         self.html2text = HTML2Text()
+        self.robots_checker = RobotsChecker()
 
     def parse_segments(self, paragraphs : List[str], url : str):
         
@@ -228,18 +300,39 @@ class Parser:
         return segments
         
     def parse_html(self, source_data):
-        soup = BeautifulSoup(source_data["html"], "html.parser")
+        html = source_data.get("html")
+        if not html:
+            logging.debug(f"No HTML content for {source_data.get('url')}")
+            return
 
-        segments = list(self.html2text.extract_text(soup))
-        segments = self.parse_segments(segments, source_data["url"])
+        # Obey robots meta tags (noindex, nofollow)
+        meta_rules = self.robots_checker.parse_meta_robots(html)
+        if meta_rules.get("error") and "No meta tag found" not in meta_rules["error"]:
+            logging.warning(f"Could not parse meta tags for {source_data.get('url')}: {meta_rules['error']}")
+
+        soup = BeautifulSoup(html, "html.parser")
+        
+        segments = []
+        # Extract and process text only if indexing is allowed
+        if meta_rules.get("can_index", True):
+            segments = list(self.html2text.extract_text(soup))
+            segments = self.parse_segments(segments, source_data["url"])
+
+        # Extract links only if following is allowed
+        page_urls = []
+        if meta_rules.get("can_follow", True):
+            page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
+
+        # If text was not indexed and links are not to be followed, we can stop.
+        if not segments and not page_urls:
+            logging.debug(f"Skipping {source_data.get('url')} (noindex and no links to follow)." )
+            return
 
         parsed_data = {
             "url": source_data["url"],
-            "segments": segments
+            "segments": segments,
+            "parsed_urls": list(page_urls)
         }
-
-        page_urls = {url for url in self.extract_urls(soup, source_data["url"])}
-        parsed_data["parsed_urls"] = list(page_urls)
 
         return parsed_data
     
@@ -257,10 +350,11 @@ class Parser:
     def parse_line(self, line):
         try:
             source_data = json.loads(line)
+            url = source_data.get("url", "")
 
-            logging.debug(f"parse {source_data['url']}")
-            if source_data["status"] < 200 or source_data["status"] > 300:
-                logging.debug(f"skip parsing of {source_data['url']} because of http status code {source_data['status']}")
+            logging.debug(f"parse {url}")
+            if source_data.get("status", -1) < 200 or source_data.get("status", -1) > 300:
+                logging.debug(f"skip parsing of {url} because of http status code {source_data.get('status')}")
                 return
 
             if "html" in source_data.keys():
@@ -268,9 +362,9 @@ class Parser:
             elif "text" in source_data.keys():
                 return self.parse_text(source_data)
 
-
         except Exception as e:
             logging.exception(e)
+
 
 
     # read a single json file that contains html data of many pages
@@ -317,6 +411,16 @@ class Parser:
                         writer.write(json_data)
                         writer.write("\n")
 
+                        domain = urlparse(parsed_data["url"]).netloc
+                        if domain not in domains2languages:
+                            domains2languages[domain] = {}
+                        language = parsed_data.get("language")
+                        if language:
+                            if language not in domains2languages[domain]:
+                                domains2languages[domain][language] = 1
+                            else:
+                                domains2domains[domain][language] += 1
+
                         for url in parsed_data["parsed_urls"]:
                             urls.add(url)
 
@@ -346,7 +450,7 @@ class Parser:
                 reader.close()
                         
                     
-        return outfile, urls
+        return outfile, urls, domains2languages
 
     # get all urls from a website
     def extract_urls(self, soup : BeautifulSoup, source_url : str):
@@ -441,13 +545,19 @@ class Crawler:
         html_store : HTMLStore,
         parser : Parser,
         urls2download : URLs2Download,
-        downloaded_urls : DownloadedURLs):
+        downloaded_urls : DownloadedURLs,
+        domain_language_counter : DomainLanguageCounter):
 
         self.config : CrawlerConfig = config
         self.html_store : HTMLStore = html_store
         self.parser : Parser = parser
         self.urls2download : URLs2Download = urls2download
         self.downloaded_urls : DownloadedURLs = downloaded_urls
+        self.domain_language_counter : DomainLanguageCounter = domain_language_counter
+
+        self.robots_checker = RobotsChecker(
+            enabled=self.config.robots_check, 
+            cache_file=os.path.join(self.config.output_folder, "robots_cache.pkl"))
 
     def round(self, num):
         filename = f"{num:05}.json"
@@ -474,33 +584,65 @@ class Crawler:
 
             self.html_store.init_round(tmp_file)
 
-            urls2download = []
+            urls_for_batch = []
+            urls_to_discard = []
+
+            # Create a set for faster lookups
+            downloaded_urls_set = set(self.downloaded_urls.urls)
 
             for url in self.urls2download.urls:
-
-                if len(urls2download) >= self.config.round_size:
-                    break
-
-                if url in self.downloaded_urls.urls or len(url.strip()) == 0:
+                url = url.strip()
+                if not url:
                     continue
 
-                urls2download.append(url)
+                if len(urls_for_batch) >= self.config.round_size:
+                    break
 
-            self.html_store.download_urls(urls2download)
+                if url in downloaded_urls_set:
+                    urls_to_discard.append(url)
+                    continue
 
-            self.urls2download.remove_urls(urls2download)
+                # Check robots.txt rules
+                if self.config.robots_check:
+                    can_fetch = self.robots_checker.check_robots(url).get('can_fetch')
+                    if not can_fetch:
+                        logging.info(f"Skipping {url} due to robots.txt restrictions.")
+                        urls_to_discard.append(url) # Mark for removal
+                        continue
+
+                # do not download blacklisted domains
+                if self.domain_language_counter.is_blacklisted(url):
+                    urls_to_discard.append(url)
+                    continue
+
+                urls_for_batch.append(url)
+
+            # Batch discard URLs from urls2download and add to downloaded_urls
+            if urls_to_discard:
+                logging.info(f"Discarding {len(urls_to_discard)} URLs (disallowed or already seen).")
+                self.urls2download.remove_urls(urls_to_discard)
+                self.downloaded_urls.urls.extend(urls_to_discard)
+
+            self.html_store.download_urls(urls_for_batch)
+
+            self.urls2download.remove_urls(urls_for_batch)
+            self.downloaded_urls.urls.extend(urls_for_batch)
+            
+            # Persist changes
             self.urls2download.write2file()
-
-            self.downloaded_urls.urls.extend(urls2download)
             self.downloaded_urls.write2file()
 
             os.rename(tmp_file, html_file)
+        else:
+            logging.debug(f"skip downloading of round {num} because file '{html_file}' exists")
 
         # parse data
         if not os.path.exists(parse_file):
 
             logging.info(f"parsing round {num}")
-            tmp_file, new_urls = self.parser.parse_json(html_file)
+            tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
+            self.domain_language_counter.add(domains2languages)
+            self.domain_language_counter.write()
             
             os.rename(tmp_file, parse_file)
 
@@ -516,6 +658,8 @@ class Crawler:
                 if url not in existing_urls and url not in urls2download:
                     self.urls2download.urls.append(url)
             self.urls2download.write2file()
+        else:
+            logging.debug(f"skip parsing of round {num} because file '{parse_file}' exists")
 
         # cleanup
         if self.config.delete_html:
@@ -542,6 +686,7 @@ def parse_args(config):
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
+    parser.add_argument('--robots_check', default=True, action=argparse.BooleanOptionalAction, help="Enable or disable robots.txt checking.")  #robochecks
     parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
 
     args = parser.parse_args()
@@ -561,6 +706,7 @@ def parse_args(config):
     config.seed_url = args.seed_url
     config.delete_parsed = args.delete_parsed
     config.delete_html = args.delete_html
+    config.robots_check = args.robots_check #robochecks
     config.dont_compress_outputs = args.dont_compress_outputs
 
     return args
@@ -602,6 +748,9 @@ def start_crawler(config):
     # init all components
     html_store = HTMLStore(config)
 
+    domain_language_counter = DomainLanguageCounter(config)
+    domain_language_counter.read_from_file()
+
     urls2download = URLs2Download([], config)
     if not urls2download.file_exists():
 
@@ -626,10 +775,12 @@ def start_crawler(config):
     downloaded_urls.read()
 
     parser = Parser(config)
-    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls)
+    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls, domain_language_counter)
 
     # start crawling
     round = 1
+    if len(urls2download.urls) == 0:
+        logging.info(f"there are no urls to download")
 
     while len(urls2download.urls) > 0:
         if config.num_rounds > 0 and config.num_rounds < round:
@@ -637,6 +788,8 @@ def start_crawler(config):
 
         crawler.round(round)
         round += 1
+
+    logging.info("crawling finished")
 
 if __name__ == "__main__":
 
