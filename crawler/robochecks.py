@@ -162,9 +162,22 @@ if __name__ == "__main__":
     
     checker = RobotsChecker(enabled=not args.disable_robots_check)
     try:
-        # The main CLI entrypoint now checks everything
+        
         robots_result = checker.check_robots(args.url, args.user_agent)
-        meta_result = checker.check_meta_robots(args.url)
+        
+        if not robots_result.get("can_fetch"):
+            print(json.dumps(robots_result, indent=2))
+            sys.exit(0)
+        # Fetch URL content for meta tag parsing
+        try:
+            response = requests.get(args.url, timeout=10)
+            response.raise_for_status()
+            html_content = response.text
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching URL content: {str(e)}", file=sys.stderr)
+            sys.exit(1)
+
+        meta_result = checker.parse_meta_robots(html_content)
         
         # Combine results
         final_result = {**robots_result, **meta_result}

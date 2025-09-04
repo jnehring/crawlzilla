@@ -100,7 +100,7 @@ def download(args):
                 valid = False
                 parser_type = None
                 for ct in config.accept_content_types.keys():
-                    if json_data["headers"]["content-type"][0:len(ct)] == ct:
+                    if json_data["headers"]["content-type"].startswith(ct):
                         valid = True
                         parser_type = config.accept_content_types[ct]
 
@@ -174,73 +174,6 @@ class HTMLStore:
 
         t = time.time() - start_time
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
-
-
-class DomainLanguageCounter:
-    """The DomainLanguageCounter should compute how many urls with the desired languages are inside of a domain. Currently, it is not in use.
-    """
-    def __init__(self, config : CrawlerConfig):
-        self.outfile = os.path.join(config.output_folder, "domain_language_counter.json")
-        self.domains = {}
-        self.domain_blacklist = set()
-        self.config = config
-
-    def add(self, domain2language):
-
-        for domain in domain2language.keys():
-
-            # if domain in self.domain_blacklist:
-            #     return
-
-            if domain not in self.domains.keys():
-                self.domains[domain] = {}
-
-            for language, count in domain2language[domain].items():
-
-                if language not in self.domains[domain].keys():
-                    self.domains[domain][language] = 0
-                
-                self.domains[domain][language] += count
-
-                if sum(self.domains[domain].values()) >= self.config.domain_language_filter_n:
-                    n1 = 0
-                    n2 = 0
-                    for language, count in self.domains[domain].items():
-                        if language in self.config.languages:
-                            n1 += 1
-                        else:
-                            n2 += 1
-                    
-                    if n2 > 0 and n1 / n2 < self.config.domain_language_filter_ratio:
-                        self.domain_blacklist.add(domain)
-
-    def is_blacklisted(self, url):
-        domain = urlparse(url).netloc
-        return domain in self.domain_blacklist
-
-    def write(self):
-        with open(self.outfile, "w") as f:
-            data = {
-                "blacklist": list(self.domain_blacklist),
-                "domains": self.domains
-            }
-            f.write(json.dumps(data))
-
-    def read_from_file(self):
-        if os.path.exists(self.outfile):
-            with open(self.outfile, "r") as f:
-                data = json.load(f)
-                self.domain_blacklist = set(data["blacklist"])
-                self.domains = data["domains"]
-
-    def filter_urls(self, urls):
-        filtered_urls = []
-        for url in urls:
-            domain = urlparse(url).netloc
-            if not self.is_blacklisted(domain):
-                filtered_urls.append(url)
-        return filtered_urls, len(urls) - len(filtered_urls)
-
 
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
@@ -545,15 +478,13 @@ class Crawler:
         html_store : HTMLStore,
         parser : Parser,
         urls2download : URLs2Download,
-        downloaded_urls : DownloadedURLs,
-        domain_language_counter : DomainLanguageCounter):
+        downloaded_urls : DownloadedURLs):
 
         self.config : CrawlerConfig = config
         self.html_store : HTMLStore = html_store
         self.parser : Parser = parser
         self.urls2download : URLs2Download = urls2download
         self.downloaded_urls : DownloadedURLs = downloaded_urls
-        self.domain_language_counter : DomainLanguageCounter = domain_language_counter
 
         self.robots_checker = RobotsChecker(
             enabled=self.config.robots_check, 
@@ -610,11 +541,6 @@ class Crawler:
                         urls_to_discard.append(url) # Mark for removal
                         continue
 
-                # do not download blacklisted domains
-                if self.domain_language_counter.is_blacklisted(url):
-                    urls_to_discard.append(url)
-                    continue
-
                 urls_for_batch.append(url)
 
             # Batch discard URLs from urls2download and add to downloaded_urls
@@ -641,8 +567,6 @@ class Crawler:
 
             logging.info(f"parsing round {num}")
             tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
-            self.domain_language_counter.add(domains2languages)
-            self.domain_language_counter.write()
             
             os.rename(tmp_file, parse_file)
 
@@ -748,9 +672,6 @@ def start_crawler(config):
     # init all components
     html_store = HTMLStore(config)
 
-    domain_language_counter = DomainLanguageCounter(config)
-    domain_language_counter.read_from_file()
-
     urls2download = URLs2Download([], config)
     if not urls2download.file_exists():
 
@@ -775,7 +696,7 @@ def start_crawler(config):
     downloaded_urls.read()
 
     parser = Parser(config)
-    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls, domain_language_counter)
+    crawler = Crawler(config, html_store, parser, urls2download, downloaded_urls)
 
     # start crawling
     round = 1
