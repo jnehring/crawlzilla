@@ -241,7 +241,7 @@ class Parser:
         soup = BeautifulSoup(html, "html.parser")
 
         # Obey robots meta tags (noindex, nofollow)
-        meta_rules = self.robots_checker.parse_meta_robots(soup)
+        meta_rules = self.robots_checker.parse_meta_robots(html)
         if meta_rules.get("error") and "No meta tag found" not in meta_rules["error"]:
             logging.warning(f"Could not parse meta tags for {source_data.get('url')}: {meta_rules['error']}")
         
