@@ -80,7 +80,7 @@ class RobotsChecker:
                 return resp.text
             return None
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching robots.txt: {str(e)}")
+            logger.info(f"Cannot fetch robots.txt: {str(e)}")
             return None
 
     def get_domain(self, url: str) -> str:
