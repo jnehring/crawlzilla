@@ -50,8 +50,11 @@ class CrawlerConfig:
         delete_html : bool = False,
         dont_compress_outputs : bool = False,
         seed_url : str = None,
-        start_fresh : bool = False
-        ):
+        start_fresh : bool = False,
+        request_headers : Dict[str,str] = {
+            "User-Agent": "Crawlzilla/1.0)",
+            "Accept": "text/html"
+        }):
 
         self.output_folder : str = output_folder
         self.html_folder : str = html_folder
@@ -73,6 +76,7 @@ class CrawlerConfig:
         self.start_fresh : bool = start_fresh
         self.delete_parsed : bool = delete_parsed
         self.delete_html : bool = delete_html
+        self.request_headers : Dict[str,str] = request_headers
         
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
@@ -84,7 +88,7 @@ def download(args):
     }
 
     try:
-        r = requests.get(url, timeout=config.request_timeout)
+        r = requests.get(url, headers=config.request_headers, timeout=config.request_timeout)
         json_data["status"] = r.status_code
 
         if r.status_code >= 200 and r.status_code < 300: 
