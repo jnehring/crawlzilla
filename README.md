@@ -1,8 +1,8 @@
 # Crawlzilla
 
-This is the Crawlzilla, a software program to crawl websites and generate LLM training data for low resource lanugages.
+<img src="https://github.com/jnehring/crawlzilla/blob/main/images/crawlzilla_logo.png" width="250" style="float:left">
 
-Features
+This is the Crawlzilla, a software program to crawl websites and generate LLM training data for low resource languages. It features:
 
 1. High speed.
 2. Friendly crawling - Crawlzilla respects robots.txt, implements waiting times and does not crawl aggressively.
