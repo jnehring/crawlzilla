@@ -10,6 +10,7 @@ import fasttext
 from huggingface_hub import hf_hub_download
 import gzip
 from tqdm.contrib.concurrent import process_map
+from tqdm import tqdm
 import time
 from urllib.parse import urljoin, urlparse
 import sys
@@ -22,7 +23,8 @@ import numpy as np
 import glob
 import fitz
 import traceback
-
+import copy
+from collections import defaultdict
 from extract_text import HTML2Text
 
 @dataclass
@@ -43,7 +45,7 @@ class CrawlerConfig:
             # "application/pdf": "pdf"
         },
         request_timeout : int = 12,
-        download_sleep_time : int = 0.1,
+        download_sleep_time : int = 1,
         filter_for_languages : bool = True,
         log_level : str = "info",
         delete_parsed : bool = False,
@@ -78,10 +80,13 @@ class CrawlerConfig:
         self.delete_html : bool = delete_html
         self.request_headers : Dict[str,str] = request_headers
         
+    def clone(self):
+        return copy.deepcopy(self)
+
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
-    url, config = args
+    url, config, pbar = args
 
     json_data = {
         "url": url,
@@ -125,7 +130,11 @@ def download(args):
 
     contains_body = "html" in json_data.keys()
     json_data = json.dumps(json_data)
-    time.sleep(config.download_sleep_time)
+
+    if config.download_sleep_time > 0:
+        time.sleep(config.download_sleep_time)
+
+    pbar.update(1)
     return json_data, contains_body
 
 # codes related to downloading and storing html data 
@@ -151,17 +160,61 @@ class HTMLStore:
         else:
             self.dump_writer = gzip.open(dump_file, "wt")
 
+
+    # batch urls for friendly download
+    # we never download two urls from the same domain in the same batch
+    def batch_urls(self, urls, batch_size : int = 250):
+        # extract the domain from the urls
+        domains = []
+        for url in urls:
+            parsed = urlparse(url)
+            domain = parsed.netloc
+            # remove "www." if you want the bare domain
+            if domain.startswith("www."):
+                domain = domain[4:]
+            domains.append(domain)
+
+        domain_list = defaultdict(list)
+        for url, domain in zip(urls, domains):
+            domain_list[domain].append(url)
+
+        # sort urls to batches
+        max_n = max([len(value) for value in domain_list.values()])
+        batches = []
+        for i in range(max_n):
+            batch = []
+            
+            for domain, url_list in domain_list.items():
+                if i < len(url_list):
+                    batch.append(url_list[i])
+
+                if len(batch) >= batch_size:
+                    batches.append(batch)
+                    batch = []
+
+            if len(batch) > 0:
+                batches.append(batch)
+
+        return batches
+    
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
 
         start_time = time.time()
         urls_with_html = 0
-        for i in range(0, len(urls), self.config.download_batch_size):
 
-            logging.info(f"download batch {i}-{i+self.config.download_batch_size}")
-            batch = [(url, self.config, ) for url in urls[i:i+self.config.download_batch_size]]
+        # batch urls for friendly download
+        # we never download two urls from the same domain in the same batch
+        batches = self.batch_urls(urls, batch_size=self.config.download_batch_size)
+        pbar = tqdm(total=len(urls))
+        for i in range(len(batches)):
 
-            data = process_map(download, batch, max_workers=self.config.download_n_threads)
+            # logging.info(f"download batch {i} with {len(batches[i])} urls")
+            batch = [(url, self.config, pbar) for url in batches[i]]
+
+            with ThreadPoolExecutor(max_workers=self.config.download_n_threads) as executor:
+                #data = process_map(download, batch, max_workers=self.config.download_n_threads)
+                data = list(executor.map(download, batch))
 
             for row in data:
                 html, contains_body = row
