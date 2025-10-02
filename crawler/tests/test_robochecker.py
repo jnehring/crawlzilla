@@ -1,8 +1,6 @@
 
 """
-Unit tests to crawl the static site.
-
-Call it like this:
+Unit tests for robochecker. Call it like this:
 
 python -m unittest tests.test_robochecker
 """
