@@ -30,7 +30,7 @@ This is the Crawlzilla, a software program to crawl websites and generate LLM tr
 **Clone this repository**
 
 ```
-git clone ...
+git clone git@github.com:jnehring/crawlzilla.git
 ```
 
 **Create virtual environment**
