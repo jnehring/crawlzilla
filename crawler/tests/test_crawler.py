@@ -1,12 +1,17 @@
 import unittest
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-from crawler import HTMLStore
+from crawler import HTMLStore, start_crawler, CrawlerConfig
+from tests.util import ServerThread
+import os
+from warcio.archiveiterator import ArchiveIterator
+
+import logging
+logging.basicConfig(level=logging.ERROR)
 
 class TestHTMLStore(unittest.TestCase):
 
     def test_batch_urls(self):
-        from crawler import CrawlerConfig
 
         config = CrawlerConfig()
 
@@ -25,3 +30,37 @@ class TestHTMLStore(unittest.TestCase):
                     domain = domain[4:]
                 self.assertFalse(domain in domains)
                 domains.append(domain)
+
+    def test_warc(self):
+
+        server, port = ServerThread.setup(os.path.join(os.path.dirname(__file__), "assets/books.toscrape.com"), port=5001)
+        output_folder = "tests/assets/temp/static_crawl/"
+        config = CrawlerConfig(
+            output_folder=output_folder,
+            languages=["eng_Latn"],
+            seed_url=f"http://localhost:{port}/index.html",
+            start_fresh=True,
+            dont_compress_outputs=True,
+            download_sleep_time=0,
+            warc_output=True,
+            num_rounds=2,
+            round_size=10
+        )
+        
+        start_crawler(config)
+        server.shutdown()
+        server.join()
+
+        def read_urls(warcfile):
+            urls = []
+            with open(warcfile, 'rb') as stream:
+                for record in ArchiveIterator(stream):
+                    if record.rec_type == 'response':
+                        urls.append(record.rec_headers.get_header('WARC-Target-URI'))
+            return urls
+        
+        urls = read_urls('tests/assets/temp/static_crawl/warc/00001.warc.gz')
+        self.assertEqual(len(urls), 1)
+
+        urls = read_urls('tests/assets/temp/static_crawl/warc/00002.warc.gz')
+        self.assertEqual(len(urls), 10)

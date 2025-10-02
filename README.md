@@ -116,6 +116,11 @@ options:
                         How many threads to parallel download data.
   --log_level {info,debug}
                         Adjust the logging level
+  --delete_parsed       Delete the parsed data when the round has ended.
+  --delete_html         Delete the html data when the round has ended.
+  --dont_compress_outputs
+                        GZip compress the output files.
+  --warc_output         Write WARC files in addition to the normal JSON files.
 ```
 
 ### Standard configuration for a crawler
@@ -133,11 +138,39 @@ python3 crawler.py \
 
 ```
 python3 crawler.py \
-    --output_folder ../outputs/kin_Latn \       # output folder
-    --language kin_Latn \                       # specify the language
-    --seed_url https://www.kigalitoday.com \    # specify a single url for download
-    --log_level debug \                         # enable debug logging
-    --dont_compress_outputs \                   # make it easier to look into the html and parsed files 
-    --num_rounds 1 \                            # crawl only for a single round
+    --output_folder ../outputs/kin_Latn \
+    --language kin_Latn \
+    --seed_url https://www.kigalitoday.com \
+    --log_level debug \
+    --dont_compress_outputs \
+    --num_rounds 1
+```
 
+### Crawl and generate WARC files instead of Crawlzilla native format
+
+```
+python3 crawler.py \
+    --output_folder ../outputs/kin_Latn \
+    --language kin_Latn \
+    --seed_url https://www.kigalitoday.com \
+    --num_rounds 5 \
+    --delete_parsed \
+    --delete_html \
+    --warc_output
+```
+
+## Run unit tests
+
+You can run unit tests to see if everything still works after your code changes.
+
+Execute all tests
+
+```
+python -m unittest discover -s tests
+```
+
+Execute one test suite
+
+```
+python -m unittest tests.test_crawler
 ```

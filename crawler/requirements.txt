@@ -6,3 +6,4 @@ fasttext-numpy2==0.10.4
 pymupdf==1.26.3
 flask==3.1.2
 numpy==1.26.4
+warcio==1.7.5

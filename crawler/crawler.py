@@ -26,6 +26,9 @@ import traceback
 import copy
 from collections import defaultdict
 from extract_text import HTML2Text
+from warcio.warcwriter import WARCWriter
+from warcio.statusandheaders import StatusAndHeaders
+from io import BytesIO
 
 @dataclass
 class CrawlerConfig:
@@ -56,7 +59,8 @@ class CrawlerConfig:
         request_headers : Dict[str,str] = {
             "User-Agent": "Crawlzilla/1.0)",
             "Accept": "text/html"
-        }):
+        },
+        warc_output : bool = False):
 
         self.output_folder : str = output_folder
         self.html_folder : str = html_folder
@@ -79,7 +83,8 @@ class CrawlerConfig:
         self.delete_parsed : bool = delete_parsed
         self.delete_html : bool = delete_html
         self.request_headers : Dict[str,str] = request_headers
-        
+        self.warc_output : bool = warc_output
+
     def clone(self):
         return copy.deepcopy(self)
 
@@ -92,6 +97,7 @@ def download(args):
         "url": url,
     }
 
+    r = None
     try:
         r = requests.get(url, headers=config.request_headers, timeout=config.request_timeout)
         json_data["status"] = r.status_code
@@ -135,7 +141,16 @@ def download(args):
         time.sleep(config.download_sleep_time)
 
     pbar.update(1)
-    return json_data, contains_body
+
+    if config.warc_output:
+        if r is None:
+            headers_list = None
+        else:
+            headers_list = r.raw.headers.items()
+            headers_list = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
+        return json_data, contains_body, headers_list
+    else:
+        return json_data, contains_body
 
 # codes related to downloading and storing html data 
 class HTMLStore:
@@ -149,12 +164,15 @@ class HTMLStore:
 
         self.current_round = 1
         self.crawled_urls = set()
+        self.warc_folder= os.path.join(config.output_folder, "warc")
+        self.warc_writer : WARCWriter = None
 
         self.dump_writer = None
 
     # open the file writer in the beginning of each round
-    def init_round(self, dump_file):
+    def init_round(self, dump_file : str, round : str):
 
+        self.current_round = round
         if self.config.dont_compress_outputs:
             self.dump_writer = open(dump_file, "w")
         else:
@@ -164,6 +182,7 @@ class HTMLStore:
     # batch urls for friendly download
     # we never download two urls from the same domain in the same batch
     def batch_urls(self, urls, batch_size : int = 250):
+
         # extract the domain from the urls
         domains = []
         for url in urls:
@@ -177,6 +196,7 @@ class HTMLStore:
         domain_list = defaultdict(list)
         for url, domain in zip(urls, domains):
             domain_list[domain].append(url)
+
 
         # sort urls to batches
         max_n = max([len(value) for value in domain_list.values()])
@@ -197,6 +217,22 @@ class HTMLStore:
 
         return batches
     
+    def write_warc(self, url : str, page_content : str, headers_list):
+
+        if self.warc_writer is None:
+            if not os.path.exists(self.warc_folder):
+                os.makedirs(self.warc_folder)
+            warc_file = os.path.join(self.warc_folder, f"{self.current_round:05}.warc.gz")
+            self.warc_file = open(warc_file, 'wb')
+            self.warc_writer = WARCWriter(self.warc_file, gzip=not self.config.dont_compress_outputs)
+
+        s = BytesIO(page_content.encode())
+        http_headers = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
+        record = self.warc_writer.create_warc_record(url, 'response',
+                                            payload=s,
+                                            http_headers=http_headers)
+        self.warc_writer.write_record(record)
+
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
 
@@ -209,23 +245,31 @@ class HTMLStore:
         pbar = tqdm(total=len(urls))
         for i in range(len(batches)):
 
-            # logging.info(f"download batch {i} with {len(batches[i])} urls")
             batch = [(url, self.config, pbar) for url in batches[i]]
-
             with ThreadPoolExecutor(max_workers=self.config.download_n_threads) as executor:
-                #data = process_map(download, batch, max_workers=self.config.download_n_threads)
                 data = list(executor.map(download, batch))
 
             for row in data:
-                html, contains_body = row
+                if self.config.warc_output:
+                    html, contains_body, http_headers = row
+                    if http_headers is not None:
+                        content = json.loads(html)
+                        self.write_warc(content['url'], content['html'], http_headers.headers)
+                else:
+                    html, contains_body = row
                 self.dump_writer.write(html)
                 self.dump_writer.write("\n")
                 if contains_body:
                     urls_with_html += 1
-        self.dump_writer.close()
 
         t = time.time() - start_time
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
+
+        self.dump_writer.close()
+
+        if self.config.warc_output and self.warc_writer is not None:
+            self.warc_writer = None
+            self.warc_file.close()
 
 
 # parse downloaded html files to extract clean text, languages and more.
@@ -272,7 +316,11 @@ class Parser:
                     break
 
             if has_desired_language:
-                desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+                desired_language_count = []
+                for lang in self.config.languages:
+                    if lang in count_dict.keys():
+                        desired_language_count.append(count_dict[lang])
+                desired_language_count = sum(desired_language_count)
                 frac = desired_language_count / np.sum(list(count_dict.values()))
             else:
                 frac = 0.0
@@ -529,7 +577,7 @@ class Crawler:
 
             tmp_file = os.path.join(self.config.output_folder, self.config.html_folder, "tmp_" + filename)
 
-            self.html_store.init_round(tmp_file)
+            self.html_store.init_round(tmp_file, num)
 
             urls2download = []
 
@@ -599,7 +647,8 @@ def parse_args(config):
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
-    parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
+    parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files.")
+    parser.add_argument('--warc_output', default=False, action="store_true", help="Write WARC files in addition to the normal JSON files.")
 
     args = parser.parse_args()
 
@@ -619,6 +668,7 @@ def parse_args(config):
     config.delete_parsed = args.delete_parsed
     config.delete_html = args.delete_html
     config.dont_compress_outputs = args.dont_compress_outputs
+    config.warc_output = args.warc_output
 
     return args
 
