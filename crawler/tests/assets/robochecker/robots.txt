@@ -1,0 +1,6 @@
+User-agent: Crawlzilla-0.5
+Disallow: /
+
+User-agent: *
+Disallow: /no-crawl
+Crawl-delay: 5
