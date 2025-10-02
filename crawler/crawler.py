@@ -638,7 +638,7 @@ def parse_args(config):
     parser.add_argument('--seed_file', default=None, type=str, help="Seed file")
     parser.add_argument('--seed_url', required=False, type=str, help="Start with a single seed url. This overwrites --seed_file. It is used for debugging.")
     parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script. You can crawl multiple languages together by separating them with a comma, e.g., kin_Latn, run_Latn")
-    parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
+    parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data from the output folder and start fresh.")
     parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
     parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse. Set to -1 run until there are no more URLs.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")

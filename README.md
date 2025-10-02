@@ -48,6 +48,7 @@ outputs
     └── domain_language_counter.json   # This is currently not used
  ```
 
+
 ## Installation
 
 **Install Git, Python**
@@ -86,10 +87,14 @@ gzip ../seeds/seeds_kin_Latn.txt
 
 ```
 $ python crawler.py -h
-usage: Crawler [-h] [--seed_file SEED_FILE] [--seed_url SEED_URL] --language LANGUAGE
-               [--start_fresh] [--output_folder OUTPUT_FOLDER] [--num_rounds NUM_ROUNDS]
-               [--round_size ROUND_SIZE] [--download_batch_size DOWNLOAD_BATCH_SIZE]
-               [--download_n_threads DOWNLOAD_N_THREADS] [--log_level {info,debug}]
+usage: Crawler [-h] [--seed_file SEED_FILE] [--seed_url SEED_URL]
+               --language LANGUAGE [--start_fresh]
+               [--output_folder OUTPUT_FOLDER] [--num_rounds NUM_ROUNDS]
+               [--round_size ROUND_SIZE]
+               [--download_batch_size DOWNLOAD_BATCH_SIZE]
+               [--download_n_threads DOWNLOAD_N_THREADS]
+               [--log_level {info,debug}] [--delete_parsed] [--delete_html]
+               [--dont_compress_outputs] [--warc_output]
 
 Crawl African Languages
 
@@ -97,17 +102,20 @@ options:
   -h, --help            show this help message and exit
   --seed_file SEED_FILE
                         Seed file
-  --seed_url SEED_URL   Start with a single seed url. This overwrites --seed_file. It is used for
-                        debugging.
-  --language LANGUAGE   Which language to use. This is the ISO_639-3 code for the language and the
-                        ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin
-                        script.
-  --start_fresh         Set to True to remove all previously crawled data and start fresh.
+  --seed_url SEED_URL   Start with a single seed url. This overwrites
+                        --seed_file. It is used for debugging.
+  --language LANGUAGE   Which language to use. This is the ISO_639-3 code for
+                        the language and the ISO 15924 code for the script, e.g.
+                        kin_Latn for Kinyarwanda in Latin script. You can crawl
+                        multiple languages together by separating them with a
+                        comma, e.g., kin_Latn, run_Latn
+  --start_fresh         Set to True to remove all previously crawled data from
+                        the output folder and start fresh.
   --output_folder OUTPUT_FOLDER
                         Where to store the output.
   --num_rounds NUM_ROUNDS
-                        How many rounds to download and parse. Set to -1 run until there are no
-                        more URLs.
+                        How many rounds to download and parse. Set to -1 run
+                        until there are no more URLs.
   --round_size ROUND_SIZE
                         How many URLs to download per round.
   --download_batch_size DOWNLOAD_BATCH_SIZE
@@ -158,6 +166,12 @@ python3 crawler.py \
     --delete_html \
     --warc_output
 ```
+
+## Crawling concepts
+
+### Resume functionality
+
+If the crawling stops, you can resume it by simply restarting it. This is a very important feature because if you already crawled for one month and the crawler crashes, you do not want to start from scratch. However, during development, this can be confusing. E.g., when the urls2download list is empty, the crawler will not crawl anything. During debugging, the `--start_fresh` option disables the resume function. But be careful: `--start_fresh` deletes the crawling output folder. 
 
 ## Run unit tests
 
