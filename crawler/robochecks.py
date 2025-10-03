@@ -80,7 +80,7 @@ class RobotsChecker:
                 content_type = resp.headers.get('content-type', '').lower()
                 # Strict validation: Must be text/plain.
                 if 'text/plain' not in content_type:
-                    logger.warning(f"Invalid content-type '{content_type}' for robots.txt at {robots_url}")
+                    logger.debug(f"Invalid content-type '{content_type}' for robots.txt at {robots_url}")
                     return None
                 return resp.text
             return None

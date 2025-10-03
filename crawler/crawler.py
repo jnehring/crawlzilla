@@ -10,6 +10,7 @@ import fasttext
 from huggingface_hub import hf_hub_download
 import gzip
 from tqdm.contrib.concurrent import process_map
+from tqdm import tqdm
 import time
 from urllib.parse import urljoin, urlparse
 import sys
@@ -24,8 +25,12 @@ import glob
 from robochecks import RobotsChecker
 import fitz
 import traceback
-
+import copy
+from collections import defaultdict
 from extract_text import HTML2Text
+from warcio.warcwriter import WARCWriter
+from warcio.statusandheaders import StatusAndHeaders
+from io import BytesIO
 
 @dataclass
 class CrawlerConfig:
@@ -45,7 +50,7 @@ class CrawlerConfig:
             # "application/pdf": "pdf"
         },
         request_timeout : int = 12,
-        download_sleep_time : int = 0.1,
+        download_sleep_time : int = 1,
         filter_for_languages : bool = True,
         log_level : str = "info",
         delete_parsed : bool = False,
@@ -53,8 +58,12 @@ class CrawlerConfig:
         robots_check: bool = True, #robochecks
         dont_compress_outputs : bool = False,
         seed_url : str = None,
-        start_fresh : bool = False
-        ):
+        start_fresh : bool = False,
+        request_headers : Dict[str,str] = {
+            "User-Agent": "Crawlzilla/1.0)",
+            "Accept": "text/html"
+        },
+        warc_output : bool = False):
 
         self.output_folder : str = output_folder
         self.html_folder : str = html_folder
@@ -72,25 +81,29 @@ class CrawlerConfig:
         self.filter_for_languages = filter_for_languages
         self.log_level : str = log_level
         self.seed_url : str = seed_url
+        self.robots_check: bool = robots_check
         self.dont_compress_outputs : bool = dont_compress_outputs
         self.start_fresh : bool = start_fresh
         self.delete_parsed : bool = delete_parsed
         self.delete_html : bool = delete_html
-        self.robots_check = robots_check #robochecks
-        self.domain_language_filter_n = 10
-        self.domain_language_filter_ratio = 0.2
+        self.request_headers : Dict[str,str] = request_headers
+        self.warc_output : bool = warc_output
+
+    def clone(self):
+        return copy.deepcopy(self)
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
-    url, config = args
+    url, config, pbar = args
 
     json_data = {
         "url": url,
     }
 
+    r = None
     try:
-        r = requests.get(url, timeout=config.request_timeout)
+        r = requests.get(url, headers=config.request_headers, timeout=config.request_timeout)
         json_data["status"] = r.status_code
 
         if r.status_code >= 200 and r.status_code < 300: 
@@ -127,8 +140,21 @@ def download(args):
 
     contains_body = "html" in json_data.keys()
     json_data = json.dumps(json_data)
-    time.sleep(config.download_sleep_time)
-    return json_data, contains_body
+
+    if config.download_sleep_time > 0:
+        time.sleep(config.download_sleep_time)
+
+    pbar.update(1)
+
+    if config.warc_output:
+        if r is None:
+            headers_list = None
+        else:
+            headers_list = r.raw.headers.items()
+            headers_list = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
+        return json_data, contains_body, headers_list
+    else:
+        return json_data, contains_body
 
 # codes related to downloading and storing html data 
 class HTMLStore:
@@ -142,39 +168,113 @@ class HTMLStore:
 
         self.current_round = 1
         self.crawled_urls = set()
+        self.warc_folder= os.path.join(config.output_folder, "warc")
+        self.warc_writer : WARCWriter = None
 
         self.dump_writer = None
 
     # open the file writer in the beginning of each round
-    def init_round(self, dump_file):
+    def init_round(self, dump_file : str, round : str):
 
+        self.current_round = round
         if self.config.dont_compress_outputs:
             self.dump_writer = open(dump_file, "w")
         else:
             self.dump_writer = gzip.open(dump_file, "wt")
+
+
+    # batch urls for friendly download
+    # we never download two urls from the same domain in the same batch
+    def batch_urls(self, urls, batch_size : int = 250):
+
+        # extract the domain from the urls
+        domains = []
+        for url in urls:
+            parsed = urlparse(url)
+            domain = parsed.netloc
+            # remove "www." if you want the bare domain
+            if domain.startswith("www."):
+                domain = domain[4:]
+            domains.append(domain)
+
+        domain_list = defaultdict(list)
+        for url, domain in zip(urls, domains):
+            domain_list[domain].append(url)
+
+
+        # sort urls to batches
+        max_n = max([len(value) for value in domain_list.values()])
+        batches = []
+        for i in range(max_n):
+            batch = []
+            
+            for domain, url_list in domain_list.items():
+                if i < len(url_list):
+                    batch.append(url_list[i])
+
+                if len(batch) >= batch_size:
+                    batches.append(batch)
+                    batch = []
+
+            if len(batch) > 0:
+                batches.append(batch)
+
+        return batches
+    
+    def write_warc(self, url : str, page_content : str, headers_list):
+
+        if self.warc_writer is None:
+            if not os.path.exists(self.warc_folder):
+                os.makedirs(self.warc_folder)
+            warc_file = os.path.join(self.warc_folder, f"{self.current_round:05}.warc.gz")
+            self.warc_file = open(warc_file, 'wb')
+            self.warc_writer = WARCWriter(self.warc_file, gzip=not self.config.dont_compress_outputs)
+
+        s = BytesIO(page_content.encode())
+        http_headers = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
+        record = self.warc_writer.create_warc_record(url, 'response',
+                                            payload=s,
+                                            http_headers=http_headers)
+        self.warc_writer.write_record(record)
 
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
 
         start_time = time.time()
         urls_with_html = 0
-        for i in range(0, len(urls), self.config.download_batch_size):
 
-            logging.info(f"download batch {i}-{i+self.config.download_batch_size}")
-            batch = [(url, self.config, ) for url in urls[i:i+self.config.download_batch_size]]
+        # batch urls for friendly download
+        # we never download two urls from the same domain in the same batch
+        batches = self.batch_urls(urls, batch_size=self.config.download_batch_size)
+        pbar = tqdm(total=len(urls))
+        for i in range(len(batches)):
 
-            data = process_map(download, batch, max_workers=self.config.download_n_threads)
+            batch = [(url, self.config, pbar) for url in batches[i]]
+            with ThreadPoolExecutor(max_workers=self.config.download_n_threads) as executor:
+                data = list(executor.map(download, batch))
 
             for row in data:
-                html, contains_body = row
+                if self.config.warc_output:
+                    html, contains_body, http_headers = row
+                    if http_headers is not None:
+                        content = json.loads(html)
+                        self.write_warc(content['url'], content['html'], http_headers.headers)
+                else:
+                    html, contains_body = row
                 self.dump_writer.write(html)
                 self.dump_writer.write("\n")
                 if contains_body:
                     urls_with_html += 1
-        self.dump_writer.close()
 
         t = time.time() - start_time
         logging.info(f"downloaded {urls_with_html:,} urls that contain html code in {t:.2f} seconds")
+
+        self.dump_writer.close()
+
+        if self.config.warc_output and self.warc_writer is not None:
+            self.warc_writer = None
+            self.warc_file.close()
+
 
 # parse downloaded html files to extract clean text, languages and more.
 class Parser:
@@ -221,7 +321,11 @@ class Parser:
                     break
 
             if has_desired_language:
-                desired_language_count = np.sum([count_dict[lang] for lang in self.config.languages])
+                desired_language_count = []
+                for lang in self.config.languages:
+                    if lang in count_dict.keys():
+                        desired_language_count.append(count_dict[lang])
+                desired_language_count = sum(desired_language_count)
                 frac = desired_language_count / np.sum(list(count_dict.values()))
             else:
                 frac = 0.0
@@ -514,7 +618,7 @@ class Crawler:
 
             tmp_file = os.path.join(self.config.output_folder, self.config.html_folder, "tmp_" + filename)
 
-            self.html_store.init_round(tmp_file)
+            self.html_store.init_round(tmp_file, num)
 
             urls_for_batch = []
             urls_to_discard = []
@@ -537,9 +641,13 @@ class Crawler:
                 urls_for_batch.append(url)
 
             # Check robots.txt rules
+            user_agent = 'Crawlzilla/1.0'
+            if self.config.request_headers.get("User-Agent"):
+                user_agent = self.config.request_headers.get("User-Agent")
+
             urls_for_batch, urls_to_discard = self.robots_checker.can_fetch_multiple_urls(
                 urls_for_batch, 
-                user_agent="Crawlzilla-1.0", 
+                user_agent=user_agent, 
                 max_workers=self.config.download_n_threads
             )
 
@@ -601,7 +709,7 @@ def parse_args(config):
     parser.add_argument('--seed_file', default=None, type=str, help="Seed file")
     parser.add_argument('--seed_url', required=False, type=str, help="Start with a single seed url. This overwrites --seed_file. It is used for debugging.")
     parser.add_argument('--language', required=True, type=str, help="Which language to use. This is the ISO_639-3 code for the language and the ISO 15924 code for the script, e.g. kin_Latn for Kinyarwanda in Latin script. You can crawl multiple languages together by separating them with a comma, e.g., kin_Latn, run_Latn")
-    parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data and start fresh.")
+    parser.add_argument('--start_fresh', default=False, action="store_true", help="Set to True to remove all previously crawled data from the output folder and start fresh.")
     parser.add_argument('--output_folder', default="../outputs", type=str, help="Where to store the output.")
     parser.add_argument('--num_rounds', default=-1, type=int, help="How many rounds to download and parse. Set to -1 run until there are no more URLs.")
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
@@ -612,6 +720,7 @@ def parse_args(config):
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
     parser.add_argument('--robots_check', default=True, action=argparse.BooleanOptionalAction, help="Enable or disable robots.txt checking.")  #robochecks
     parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
+    parser.add_argument('--warc_output', default=False, action="store_true", help="Write WARC files in addition to the normal JSON files.")
 
     args = parser.parse_args()
 
@@ -632,6 +741,7 @@ def parse_args(config):
     config.delete_html = args.delete_html
     config.robots_check = args.robots_check #robochecks
     config.dont_compress_outputs = args.dont_compress_outputs
+    config.warc_output = args.warc_output
 
     return args
 
