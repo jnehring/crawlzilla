@@ -91,6 +91,12 @@ class CrawlerConfig:
 
     def clone(self):
         return copy.deepcopy(self)
+    
+    def get_user_agent(self):
+        if "User-Agent" in self.request_headers.keys():
+            return self.request_headers["User-Agent"]
+        else:
+            return "Crawlzilla/1.0"
 
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
@@ -159,9 +165,10 @@ def download(args):
 # codes related to downloading and storing html data 
 class HTMLStore:
 
-    def __init__(self, config : CrawlerConfig):
+    def __init__(self, config : CrawlerConfig, robots_checker : RobotsChecker = None):
 
         self.config : CrawlerConfig = config
+        self.robots_checker = robots_checker
         self.html_folder = os.path.join(config.output_folder, config.html_folder)
         if not os.path.exists(self.html_folder):
             os.makedirs(self.html_folder)
@@ -249,10 +256,20 @@ class HTMLStore:
         pbar = tqdm(total=len(urls))
         for i in range(len(batches)):
 
-            batch = [(url, self.config, pbar) for url in batches[i]]
+            # collect parameters for parallel download
+            batch = []
+            for j in range(len(batches[i])):
+                conf = self.config.clone()
+                download_sleep_time = self.robots_checker.get_crawl_sleep_delay(batches[i][j], self.config.get_user_agent())
+                if download_sleep_time is not None:
+                    conf.download_sleep_time = max(conf.download_sleep_time, download_sleep_time)
+                batch.append((urls[j], conf, pbar))
+
+            # do parallel download
             with ThreadPoolExecutor(max_workers=self.config.download_n_threads) as executor:
                 data = list(executor.map(download, batch))
 
+            # store results in warc and json
             for row in data:
                 if self.config.warc_output:
                     html, contains_body, http_headers = row
@@ -594,6 +611,7 @@ class Crawler:
         self.robots_checker = RobotsChecker(
             enabled=self.config.robots_check, 
             cache_file=os.path.join(self.config.output_folder, "robots_cache.pkl"))
+        self.html_store.robots_checker = self.robots_checker
 
     def round(self, num):
         filename = f"{num:05}.json"
@@ -641,13 +659,9 @@ class Crawler:
                 urls_for_batch.append(url)
 
             # Check robots.txt rules
-            user_agent = 'Crawlzilla/1.0'
-            if self.config.request_headers.get("User-Agent"):
-                user_agent = self.config.request_headers.get("User-Agent")
-
             urls_for_batch, urls_to_discard = self.robots_checker.can_fetch_multiple_urls(
                 urls_for_batch, 
-                user_agent=user_agent, 
+                user_agent=self.config.get_user_agent(), 
                 max_workers=self.config.download_n_threads
             )
 

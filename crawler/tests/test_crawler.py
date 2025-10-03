@@ -8,6 +8,7 @@ from warcio.archiveiterator import ArchiveIterator
 
 import logging
 logging.basicConfig(level=logging.ERROR)
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 class TestHTMLStore(unittest.TestCase):
 
@@ -44,7 +45,7 @@ class TestHTMLStore(unittest.TestCase):
             download_sleep_time=0,
             warc_output=True,
             num_rounds=2,
-            round_size=10
+            round_size=10,
         )
         
         start_crawler(config)

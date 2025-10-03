@@ -88,6 +88,38 @@ class RobotsChecker:
             logger.debug(f"Cannot fetch robots.txt: {str(e)}")
             return None
 
+    def get_crawl_sleep_delay(self, url: str, user_agent : str = 'Crawlzilla/1.0') -> int:
+        """Get Crawl-delay from robots.txt for the given URL"""
+        if not self.enabled:
+            return None
+        
+        domain = self.get_domain(url)
+        robots_url = f"{domain}/robots.txt"
+        robots_txt = self.cache.get_robots_txt(robots_url) if self.cache else None
+        
+        if robots_txt is None:
+            robots_txt = RobotsChecker.fetch_robots_txt(robots_url)
+            if robots_txt and self.cache:
+                self.cache.set_robots_txt(domain, robots_txt)
+
+        if robots_txt is None:
+            return None
+        
+        try:
+            rp = urllib.robotparser.RobotFileParser()
+            rp.set_url(f"{domain}/robots.txt")
+            rp.parse(robots_txt.splitlines())
+            crawl_delay = rp.crawl_delay(user_agent)
+
+            if crawl_delay is None:
+                return None
+            else:
+                return int(crawl_delay)
+        except Exception as e:
+            logger.error(f"Error parsing robots.txt for crawl delay: {str(e)}")
+            return None
+
+
     # accept a list of urls that we want to crawl
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch

@@ -58,12 +58,14 @@ class TestRobochecker(unittest.TestCase):
         cache_key = f"http://localhost:{self.port}"
         can_fetch_url = f"http://localhost:{self.port}/index.html"
         cannot_fetch_url = f"http://localhost:{self.port}/no-crawl/test.html"
-        
+
+        self.assertIsNone(rc.cache.get_robots_txt(cache_key))
+
+        self.assertEqual(rc.get_crawl_sleep_delay(can_fetch_url), 5)
+    
         user_agent_forbidden = 'Crawlzilla-0.5'
         user_agent_allowed = 'Crawlzilla-1.0'
         
-        self.assertIsNone(rc.cache.get_robots_txt(cache_key))
-
         # fetching is allowed for whitelisted url and the good user agent
         self.assertTrue(rc.check_robots(can_fetch_url, user_agent_allowed))
 
