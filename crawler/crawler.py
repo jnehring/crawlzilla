@@ -79,6 +79,7 @@ class CrawlerConfig:
         self.robots_check = robots_check #robochecks
         self.domain_language_filter_n = 10
         self.domain_language_filter_ratio = 0.2
+
 # helper function to download a single url and convert the result to json
 # it will be executed in parallel 
 def download(args):
@@ -533,15 +534,14 @@ class Crawler:
                     urls_to_discard.append(url)
                     continue
 
-                # Check robots.txt rules
-                if self.config.robots_check:
-                    can_fetch = self.robots_checker.check_robots(url).get('can_fetch')
-                    if not can_fetch:
-                        logging.info(f"Skipping {url} due to robots.txt restrictions.")
-                        urls_to_discard.append(url) # Mark for removal
-                        continue
-
                 urls_for_batch.append(url)
+
+            # Check robots.txt rules
+            urls_for_batch, urls_to_discard = self.robots_checker.can_fetch_multiple_urls(
+                urls_for_batch, 
+                user_agent="Crawlzilla-1.0", 
+                max_workers=self.config.download_n_threads
+            )
 
             # Batch discard URLs from urls2download and add to downloaded_urls
             if urls_to_discard:

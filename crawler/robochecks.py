@@ -11,6 +11,7 @@ from typing import Dict, Optional, Tuple, Any, cast
 from datetime import datetime, timedelta
 from threading import Lock
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +56,10 @@ class RobotsCache:
                 if datetime.now() - timestamp < self.cache_duration:
                     return content
             return None
+        
+    def in_cache(self, domain: str) -> bool:
+        with self.lock:
+            return domain in self.cache
     
     def set_robots_txt(self, domain: str, content: str):
         with self.lock:
@@ -67,7 +72,7 @@ class RobotsChecker:
         self.enabled = enabled
         self.cache = RobotsCache(cache_file) if enabled else None
 
-    def fetch_robots_txt(self, robots_url: str) -> Optional[str]:
+    def fetch_robots_txt(robots_url: str) -> Optional[str]:
         """Fetch and validate robots.txt content"""
         try:
             resp = requests.get(robots_url, timeout=10)
@@ -80,8 +85,35 @@ class RobotsChecker:
                 return resp.text
             return None
         except requests.exceptions.RequestException as e:
-            logger.info(f"Cannot fetch robots.txt: {str(e)}")
+            logger.debug(f"Cannot fetch robots.txt: {str(e)}")
             return None
+
+    # accept a list of urls that we want to crawl
+    # if robots.txts is not in cache, fetch them in parallel
+    # return 2 lists of urls we can fetch and we cannot fetch
+    def can_fetch_multiple_urls(self, urls: list, user_agent: str = "*", max_workers: int = 5):
+        robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
+        robots_urls = list(set(robots_urls))
+        robots_urls = list(filter(lambda x: not self.cache.in_cache(x), robots_urls))
+
+        logging.info(f"Fetching {len(robots_urls)} robots.txt files in parallel with {max_workers} workers")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(RobotsChecker.fetch_robots_txt, robots_urls))
+            assert len(robots_urls) == len(results)
+
+        for url, content in zip(robots_urls, results):
+            self.cache.set_robots_txt(url, content)
+
+        can_fetch_urls = []
+        cannot_fetch_urls = []
+        
+        for url in urls:
+            result = self.check_robots(url, user_agent)
+            if result.get("can_fetch", False):
+                can_fetch_urls.append(url)
+            else:
+                cannot_fetch_urls.append(url)
+        return can_fetch_urls, cannot_fetch_urls
 
     def get_domain(self, url: str) -> str:
         parsed = urlparse(url)
@@ -117,7 +149,7 @@ class RobotsChecker:
             robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
             
             if robots_txt is None:
-                robots_txt = self.fetch_robots_txt(robots_url)
+                robots_txt = RobotsChecker.fetch_robots_txt(robots_url)
                 if robots_txt and self.cache:
                     self.cache.set_robots_txt(domain, robots_txt)
 

@@ -15,6 +15,9 @@ from werkzeug.serving import make_server
 import json
 from robochecks import RobotsCache, RobotsChecker
 
+import logging
+logging.basicConfig(level=logging.WARNING)
+
 class ServerThread(threading.Thread):
     def __init__(self, app, host="127.0.0.1", port=5000):
         super().__init__()
@@ -33,8 +36,7 @@ class ServerThread(threading.Thread):
 
 class TestRobochecker(unittest.TestCase):
 
-    def setUp(self):
-
+    def test_robochecker(self):
         # Point to your downloaded static site folder
         static_dir = os.path.join(os.path.dirname(__file__), "assets/robochecker")
         self.app = Flask(
@@ -46,7 +48,7 @@ class TestRobochecker(unittest.TestCase):
         self.server = ServerThread(self.app)
         self.server.start()
 
-    def test_robochecker(self):
+
         cache_file = "tests/assets/temp/robots_cache.pkl"
         if os.path.exists(cache_file):
             os.remove(cache_file)
@@ -80,11 +82,23 @@ class TestRobochecker(unittest.TestCase):
         rc = RobotsChecker(cache_file=cache_file)
         self.assertIsNotNone(rc.cache.get_robots_txt(cache_key))
 
-
-    def tearDown(self):
         self.server.shutdown()
         self.server.join()
 
+    @unittest.skip("This test is for debugging only")
+    def test_parallel_download(self): 
+        
+        cache_file = "tests/assets/temp/robots_cache.pkl"
+        if os.path.exists(cache_file):
+            os.remove(cache_file)
+
+        rc = RobotsChecker(cache_file=cache_file)
+        urls = ['https://umuryango.rw/imyidagaduro/imikino/article/chelsea-ishobora-gufatirwa-ibihano-bikomeye-na-fifa', 
+                'https://www.bbc.com/gahuza/amakuru-36435571', 
+                'https://www.bbc.com/gahuza/amakuru-38333703', 
+                'https://www.bbc.com/gahuza/amakuru-51986913', 
+                'https://www.irmct.org/rw/amakuru/22-12-12-perezida-gatti-santana-yabonanye-na-bwana-antonio-guterres-umunyamabanga-mukuru']
+        can_fetch, cannot_fetch = rc.can_fetch_multiple_urls(urls)
 
 if __name__ == '__main__':
     unittest.main()
