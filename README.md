@@ -73,7 +73,6 @@ python3 crawler.py \
 
 ```
 python3 crawler.py \
-<<<<<<< HEAD
     --output_folder ../outputs/kin_Latn \       # output folder
     --language kin_Latn \                       # specify the language
     --seed_url https://www.kigalitoday.com \    # specify a single url for download
@@ -81,17 +80,9 @@ python3 crawler.py \
     --dont_compress_outputs \                   # make it easier to look into the html and parsed files 
     --no-robots_check \                         # disable robots.txt checking for this debug run
     --num_rounds 1                              # crawl only for a single round
-=======
-    --output_folder ../outputs/kin_Latn \
-    --language kin_Latn \
-    --seed_url https://www.kigalitoday.com \
-    --log_level debug \
-    --dont_compress_outputs \
-    --num_rounds 1
 ```
 
 ### Crawlzilla`s command line parameters
->>>>>>> main
 
 ```
 $ python crawler.py -h
