@@ -263,7 +263,7 @@ class HTMLStore:
                 download_sleep_time = self.robots_checker.get_crawl_sleep_delay(batches[i][j], self.config.get_user_agent())
                 if download_sleep_time is not None:
                     conf.download_sleep_time = max(conf.download_sleep_time, download_sleep_time)
-                batch.append((urls[j], conf, pbar))
+                batch.append((batches[i][j], conf, pbar))
 
             # do parallel download
             with ThreadPoolExecutor(max_workers=self.config.download_n_threads) as executor:
@@ -731,7 +731,7 @@ def parse_args(config):
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
-    parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the round has ended.")
+    parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the∏ round has ended.")
     parser.add_argument('--robots_check', default=True, action=argparse.BooleanOptionalAction, help="Enable or disable robots.txt checking.")  #robochecks
     parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
     parser.add_argument('--warc_output', default=False, action="store_true", help="Write WARC files in addition to the normal JSON files.")
