@@ -207,3 +207,7 @@ You can also execute a single test suite only
 ```
 python -m unittest tests.test_crawler
 ```
+
+## License
+
+This code is released under the [MIT license](LICENSE).
