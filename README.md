@@ -210,4 +210,4 @@ python -m unittest tests.test_crawler
 
 ## License
 
-This code is released under the MIT license.
+This code is released under the [MIT license](LICENSE).
