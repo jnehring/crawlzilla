@@ -1,5 +1,7 @@
 # How to identify good clean text
 
+This article explains what kind of text we want to use for LLM training. You can use it as reference when debugging the crawler.
+
 Example URL: https://www.bbc.com/news/articles/ckgyxyjvyvxo
 
 ## Examples of text that we want
