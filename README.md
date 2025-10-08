@@ -169,9 +169,6 @@ outputs
     └── domain_language_counter.json   # This is currently not used
  ```
 
-
-## Crawling concepts
-
 ### Resume functionality
 
 If the crawling stops, you can resume it by simply restarting it. This is a very important feature because if you already crawled for one month and the crawler crashes, you do not want to start from scratch. However, during development, this can be confusing. E.g., when the urls2download list is empty, the crawler will not crawl anything. During debugging, the `--start_fresh` option disables the resume function. But be careful: `--start_fresh` deletes the crawling output folder. 
@@ -207,6 +204,10 @@ You can also execute a single test suite only
 ```
 python -m unittest tests.test_crawler
 ```
+
+## Further Articles
+
+* [How to generate seed URLs from Commoncrawl](doc/create_seed_urls.ipynb)
 
 ## License
 
