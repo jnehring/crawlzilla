@@ -273,7 +273,8 @@ class HTMLStore:
                     html, contains_body, http_headers = row
                     if http_headers is not None:
                         content = json.loads(html)
-                        self.write_warc(content['url'], content['html'], http_headers.headers)
+                        if 'html' in content.keys():
+                            self.write_warc(content['url'], content['html'], http_headers.headers)
                 else:
                     html, contains_body = row
                 self.dump_writer.write(html)
@@ -669,7 +670,7 @@ class Crawler:
                 self.urls2download.remove_urls(urls_to_discard)
                 self.downloaded_urls.urls.extend(urls_to_discard)
 
-            logging.info(f"Downloading {len(urls_for_batch)}")
+            logging.info(f"Downloading {len(urls_for_batch)} urls")
             self.html_store.download_urls(urls_for_batch)
 
             self.urls2download.remove_urls(urls_for_batch)
