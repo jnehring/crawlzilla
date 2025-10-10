@@ -21,9 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import numpy as np
 import glob
-#robochecks
 from robochecks import RobotsChecker
-import fitz
 import traceback
 import copy
 from collections import defaultdict
@@ -671,6 +669,7 @@ class Crawler:
                 self.urls2download.remove_urls(urls_to_discard)
                 self.downloaded_urls.urls.extend(urls_to_discard)
 
+            logging.info(f"Downloading {len(urls_for_batch)}")
             self.html_store.download_urls(urls_for_batch)
 
             self.urls2download.remove_urls(urls_for_batch)
@@ -732,7 +731,7 @@ def parse_args(config):
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the∏ round has ended.")
-    parser.add_argument('--robots_check', default=True, action=argparse.BooleanOptionalAction, help="Enable or disable robots.txt checking.")  #robochecks
+    parser.add_argument('--robots_check', default=True, type=bool, help="Enable or disable robots.txt checking.")  #robochecks
     parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
     parser.add_argument('--warc_output', default=False, action="store_true", help="Write WARC files in addition to the normal JSON files.")
 

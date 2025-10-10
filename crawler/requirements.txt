@@ -3,7 +3,5 @@ fasttext==0.9.3
 huggingface_hub==0.29.2
 nltk==3.9.1
 fasttext-numpy2==0.10.4
-pymupdf==1.26.3
-flask==3.1.2
-numpy==1.26.4
+numpy==1.22.0
 warcio==1.7.5

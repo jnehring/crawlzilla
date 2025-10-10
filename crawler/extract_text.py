@@ -1,10 +1,10 @@
 import re
-import fitz
+#import fitz
 from bs4 import BeautifulSoup
 import requests 
 
 
-def pdf2html(input):
+def pdf2html(doc):
     """Convert PDF to HTML
 
     Args:
@@ -13,10 +13,10 @@ def pdf2html(input):
     Returns:
         _type_: _description_
     """
-    if type(input) == str:
-        doc = fitz.open(input)
-    elif type(input) == requests.models.Response:
-        doc = fitz.open(stream=input.content, filetype="pdf")
+    # if type(input) == str:
+    #     doc = fitz.open(input)
+    # elif type(input) == requests.models.Response:
+    #     doc = fitz.open(stream=input.content, filetype="pdf")
 
     soup = BeautifulSoup("<html><head></head><body></body></html>", "html.parser")
 
