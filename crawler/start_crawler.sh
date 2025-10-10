@@ -14,5 +14,4 @@ python3 crawler.py \
     --download_n_threads 30 \
     --language $1 \
     --seed_file ../seedurls/$1.txt.gz \
-    --delete_html \
-    --delete_prased 
+    --warc_output
