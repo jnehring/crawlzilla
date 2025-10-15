@@ -1,7 +1,7 @@
 import unittest
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-from crawler import HTMLStore, start_crawler, CrawlerConfig
+from crawler import HTMLStore, start_crawler, CrawlerConfig, URLs2Download
 from tests.util import ServerThread
 import os
 from warcio.archiveiterator import ArchiveIterator
@@ -10,7 +10,7 @@ import logging
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
-class TestHTMLStore(unittest.TestCase):
+class TestCrawler(unittest.TestCase):
 
     def test_batch_urls(self):
 
@@ -31,6 +31,31 @@ class TestHTMLStore(unittest.TestCase):
                     domain = domain[4:]
                 self.assertFalse(domain in domains)
                 domains.append(domain)
+
+    def test_create_batch(self):
+        urls = [
+            "https://example.com/page1",
+            "https://example.com/page2",
+            "https://example.com/page3",
+            "https://another.com/page1",
+            "https://another.com/page2",
+            "https://third.com/page1",
+            "https://fourth.com/page1",
+            "https://fifth.com/page1",
+            "https://example.com/page4",
+        ]
+
+        config = CrawlerConfig()
+        config.output_folder = 'tests/assets/temp/batch_test'
+        urls2download = URLs2Download(urls, config)
+
+        batch = urls2download.get_batch(3)
+        self.assertEqual(len(batch), 3)
+        self.assertEqual(batch, ["https://example.com/page1", "https://another.com/page1", "https://third.com/page1"])
+
+        batch = urls2download.get_batch(20)
+        self.assertEqual(len(batch), len(urls))
+        self.assertEqual(sorted(batch), sorted(urls))
 
     def test_warc(self):
 

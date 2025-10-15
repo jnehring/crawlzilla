@@ -251,9 +251,12 @@ class HTMLStore:
         # batch urls for friendly download
         # we never download two urls from the same domain in the same batch
         batches = self.batch_urls(urls, batch_size=self.config.download_batch_size)
+        with open('batches.json', 'w') as f:
+            f.write(json.dumps(batches, indent=4))
         pbar = tqdm(total=len(urls))
         for i in range(len(batches)):
 
+            logging.debug(f"download batch {i}/{len(batches)} with urls: {batches[i]}")
             # collect parameters for parallel download
             batch = []
             for j in range(len(batches[i])):
@@ -584,6 +587,31 @@ class URLs2Download(URLStore):
         outfile = os.path.join(config.output_folder, "urls2download.txt")
         super().__init__(outfile, seed_urls)
 
+    # return a batch of urls
+    # the batch should be diverse, meaning they should come from different domains
+    # this is to ensure friendly crawling
+    def get_batch(self, batch_size):
+        urls_to_check = self.urls[0:min(len(self.urls), batch_size*10)]
+
+        domains2urls = defaultdict(list)
+        for url in urls_to_check:
+            domain = urlparse(url).netloc
+            domains2urls[domain].append(url)
+        domains = sorted(domains2urls.keys(), key=lambda x:len(domains2urls[x]), reverse=True)
+        batch = []
+        i=0
+        while len(batch) < batch_size and len(batch) < len(urls_to_check):
+            for domain in domains:
+                if len(domains2urls[domain]) > i:
+                    batch.append(domains2urls[domain][i])
+                    if len(batch) == batch_size or len(batch) == batch_size:
+                        break
+                else:
+                    break
+            i += 1
+        return batch
+            
+
 # the urls that we already downloaded
 class DownloadedURLs(URLStore):
 
@@ -643,7 +671,7 @@ class Crawler:
             # Create a set for faster lookups
             downloaded_urls_set = set(self.downloaded_urls.urls)
 
-            for url in self.urls2download.urls:
+            for url in self.urls2download.get_batch(self.config.round_size):
                 url = url.strip()
                 if not url:
                     continue
@@ -810,7 +838,7 @@ def start_crawler(config):
             urls = [f.replace("\n", "") for f in urls]
             urls = list(filter(lambda url : len(url.strip()) > 0, urls))
 
-            logging.info(f"initialize crawler with {len(urls)} seed urls")
+            logging.info(f"initialize crawler with {len(urls):,} seed urls")
         random.shuffle(urls)
         urls2download.urls = urls
     else:
