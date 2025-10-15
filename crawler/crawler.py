@@ -788,23 +788,45 @@ def parse_args(config):
     return args
 
 def init_logging(config):
-    # set up logging to file
+    """Initialize logging configuration with forced handlers"""
+    logs_dir = os.path.join(config.output_folder, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
 
-    if config.log_level.lower() == "info":
-        log_level = logging.INFO
-    elif config.log_level.lower() == "debug":
-        log_level = logging.DEBUG
-    else:
-        raise Exception(f"unknown log level \"{config.log_level}\"" )
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    log_file_path = os.path.join(logs_dir, f"crawl_{timestamp}.log")
 
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("log.log"),
-            logging.StreamHandler()
-        ]
+    # Define log level
+    level = getattr(logging, config.log_level.upper(), logging.INFO)
+
+    # Create handlers
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    # Define format
+    log_format = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
+    file_handler.setFormatter(log_format)
+    console_handler.setFormatter(log_format)
+
+    # Get root logger and reset existing handlers
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.handlers = []  # clear existing handlers
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    # Suppress noisy loggers
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("tqdm").setLevel(logging.WARNING)
+
+    logging.info("=" * 60)
+    logging.info("Logging initialized")
+    logging.info(f"Log file created at: {log_file_path}")
+    logging.info("=" * 60)
+
 
 def start_crawler(config):
 
