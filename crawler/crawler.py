@@ -47,8 +47,9 @@ class CrawlerConfig:
             "text/html": "html",
             # "application/pdf": "pdf"
         },
-        request_timeout : int = 12,
-        download_sleep_time : int = 1,
+        request_timeout : int = 6,
+        crawl_delay : int = 1,
+        max_crawl_delay : int = 10,
         filter_for_languages : bool = True,
         log_level : str = "info",
         delete_parsed : bool = False,
@@ -74,7 +75,8 @@ class CrawlerConfig:
         self.num_rounds : int = num_rounds
         self.accept_content_types : Dict[str,str] = accept_content_types
         self.request_timeout : int = request_timeout
-        self.download_sleep_time : int = download_sleep_time
+        self.crawl_delay : int = crawl_delay
+        self.max_crawl_delay : int = max_crawl_delay
         self.text_folder : str = "textual_outputs"
         self.filter_for_languages = filter_for_languages
         self.log_level : str = log_level
@@ -136,7 +138,6 @@ def download(args):
                     logging.debug(f"skip {url} because of undesired content-type header {ct}")
             else:
                 logging.debug(f"skip {url} because it does not specify a content-type header")
-
     except Exception as e:
         json_data["status"] = -1
         json_data["error"] = str(e)
@@ -145,8 +146,8 @@ def download(args):
     contains_body = "html" in json_data.keys()
     json_data = json.dumps(json_data)
 
-    if config.download_sleep_time > 0:
-        time.sleep(config.download_sleep_time)
+    if config.crawl_delay > 0:
+        time.sleep(config.crawl_delay)
 
     pbar.update(1)
 
@@ -261,9 +262,10 @@ class HTMLStore:
             batch = []
             for j in range(len(batches[i])):
                 conf = self.config.clone()
-                download_sleep_time = self.robots_checker.get_crawl_sleep_delay(batches[i][j], self.config.get_user_agent())
-                if download_sleep_time is not None:
-                    conf.download_sleep_time = max(conf.download_sleep_time, download_sleep_time)
+                crawl_delay = self.robots_checker.get_crawl_sleep_delay(batches[i][j], self.config.get_user_agent())
+                if crawl_delay is not None:
+                    conf.crawl_delay = max(conf.crawl_delay, crawl_delay)
+                    conf.crawl_delay = min(conf.crawl_delay, conf.max_crawl_delay)
                 batch.append((batches[i][j], conf, pbar))
 
             # do parallel download
