@@ -421,8 +421,8 @@ class Parser:
                 return self.parse_text(source_data)
 
         except Exception as e:
+            logging.error(f"error while parsing url '{url}'")
             logging.exception(e)
-
 
 
     # read a single json file that contains html data of many pages
