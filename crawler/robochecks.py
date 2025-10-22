@@ -75,6 +75,7 @@ class RobotsChecker:
     def fetch_robots_txt(robots_url: str) -> Optional[str]:
         """Fetch and validate robots.txt content"""
         try:
+            logging.debug(f'fetch robots.txt from {robots_url}')
             resp = requests.get(robots_url, timeout=10)
             if resp.status_code == 200:
                 content_type = resp.headers.get('content-type', '').lower()
@@ -124,6 +125,7 @@ class RobotsChecker:
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch
     def can_fetch_multiple_urls(self, urls: list, user_agent: str = "*", max_workers: int = 5):
+
         robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
         robots_urls = list(set(robots_urls))
         robots_urls = list(filter(lambda x: not self.cache.in_cache(x), robots_urls))
@@ -145,6 +147,7 @@ class RobotsChecker:
                 can_fetch_urls.append(url)
             else:
                 cannot_fetch_urls.append(url)
+
         return can_fetch_urls, cannot_fetch_urls
 
     def get_domain(self, url: str) -> str:
