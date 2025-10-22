@@ -207,7 +207,6 @@ class HTMLStore:
         for url, domain in zip(urls, domains):
             domain_list[domain].append(url)
 
-
         # sort urls to batches
         max_n = max([len(value) for value in domain_list.values()])
         batches = []

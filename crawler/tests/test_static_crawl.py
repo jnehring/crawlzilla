@@ -35,7 +35,7 @@ class TestStaticCrawl(unittest.TestCase):
             seed_url=seed_url,
             start_fresh=True,
             dont_compress_outputs=True,
-            download_sleep_time=0,
+            crawl_delay=0,
             num_rounds=2
         )
         

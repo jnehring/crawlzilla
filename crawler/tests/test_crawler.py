@@ -67,7 +67,7 @@ class TestCrawler(unittest.TestCase):
             seed_url=f"http://localhost:{port}/index.html",
             start_fresh=True,
             dont_compress_outputs=True,
-            download_sleep_time=0,
+            crawl_delay=0,
             warc_output=True,
             num_rounds=2,
             round_size=10,

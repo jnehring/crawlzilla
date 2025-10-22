@@ -68,6 +68,9 @@ class RobotsCache:
             self._save_cache()
 
 class RobotsChecker:
+
+    RobotsTxtDoesNotExist = 'non_existing'
+
     def __init__(self, cache_file: str = "robots_cache.pkl", enabled: bool = True):
         self.enabled = enabled
         self.cache = RobotsCache(cache_file) if enabled else None
@@ -81,12 +84,12 @@ class RobotsChecker:
                 # Strict validation: Must be text/plain.
                 if 'text/plain' not in content_type:
                     logger.debug(f"Invalid content-type '{content_type}' for robots.txt at {robots_url}")
-                    return None
+                    return RobotsChecker.RobotsTxtDoesNotExist
                 return resp.text
-            return None
+            return RobotsChecker.RobotsTxtDoesNotExist
         except requests.exceptions.RequestException as e:
             logger.debug(f"Cannot fetch robots.txt: {str(e)}")
-            return None
+            return RobotsChecker.RobotsTxtDoesNotExist
 
     def get_crawl_sleep_delay(self, url: str, user_agent : str = 'Crawlzilla/1.0') -> int:
         """Get Crawl-delay from robots.txt for the given URL"""
@@ -190,7 +193,7 @@ class RobotsChecker:
                 "error": None,
             }
 
-            if robots_txt is None:
+            if robots_txt is None or robots_txt == RobotsChecker.RobotsTxtDoesNotExist:
                 result["error"] = f"No valid robots.txt found at {robots_url}. Assuming allowed."
                 return result
 
