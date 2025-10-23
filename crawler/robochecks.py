@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple, Any, cast
 from datetime import datetime, timedelta
 from threading import Lock
 from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
+from tqdm.contrib.concurrent import process_map
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -134,9 +134,8 @@ class RobotsChecker:
         robots_urls = list(filter(lambda x: not self.cache.in_cache(x), robots_urls))
 
         logging.info(f"Fetching {len(robots_urls)} robots.txt files in parallel with {max_workers} workers")
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(RobotsChecker.fetch_robots_txt, robots_urls))
-            assert len(robots_urls) == len(results)
+        results = process_map(RobotsChecker.fetch_robots_txt, robots_urls, max_workers=max_workers, chunksize=1)
+        assert len(robots_urls) == len(results)
 
         for url, content in zip(robots_urls, results):
             self.cache.set_robots_txt(url, content)
