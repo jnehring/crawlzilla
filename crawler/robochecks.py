@@ -184,7 +184,6 @@ class RobotsChecker:
             domain = self.get_domain(url)
             robots_url = f"{domain}/robots.txt"
             
-            print(domain)
             robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
             
             if robots_txt is None:
