@@ -11,7 +11,7 @@ python3 crawler.py \
     --output_folder ../outputs/$1/ \
     --round_size 5000 \
     --download_batch_size 1000 \
-    --download_n_threads 30 \
+    --download_n_threads 200 \
     --language $1 \
-    --seed_file ../seedurls/$1.txt.gz \
+    --seed_file ../../seeds-2025-10-10/$1.txt.gz \
     --warc_output

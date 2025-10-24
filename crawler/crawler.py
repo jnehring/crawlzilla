@@ -29,6 +29,8 @@ from extract_text import HTML2Text
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 from io import BytesIO
+import warnings
+import urllib3
 
 @dataclass
 class CrawlerConfig:
@@ -228,19 +230,23 @@ class HTMLStore:
     
     def write_warc(self, url : str, page_content : str, headers_list):
 
-        if self.warc_writer is None:
-            if not os.path.exists(self.warc_folder):
-                os.makedirs(self.warc_folder)
-            warc_file = os.path.join(self.warc_folder, f"{self.current_round:05}.warc.gz")
-            self.warc_file = open(warc_file, 'wb')
-            self.warc_writer = WARCWriter(self.warc_file, gzip=not self.config.dont_compress_outputs)
+        try:
+            if self.warc_writer is None:
+                if not os.path.exists(self.warc_folder):
+                    os.makedirs(self.warc_folder)
+                warc_file = os.path.join(self.warc_folder, f"{self.current_round:05}.warc.gz")
+                self.warc_file = open(warc_file, 'wb')
+                self.warc_writer = WARCWriter(self.warc_file, gzip=not self.config.dont_compress_outputs)
 
-        s = BytesIO(page_content.encode())
-        http_headers = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
-        record = self.warc_writer.create_warc_record(url, 'response',
-                                            payload=s,
-                                            http_headers=http_headers)
-        self.warc_writer.write_record(record)
+            s = BytesIO(page_content.encode())
+            http_headers = StatusAndHeaders('200 OK', headers_list, protocol='HTTP/1.0')
+            record = self.warc_writer.create_warc_record(url, 'response',
+                                                payload=s,
+                                                http_headers=http_headers)
+            self.warc_writer.write_record(record)
+        except Exception as e:
+            logging.debug("An exception occurred in write_warc, ", exc_info=True)
+
 
     # download a list of urls in parallel in multiple batches
     def download_urls(self, urls : List[str]):
@@ -822,6 +828,11 @@ def init_logging(config):
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("tqdm").setLevel(logging.WARNING)
+
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.SNIMissingWarning)
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.SubjectAltNameWarning)
+
 
     logging.info("=" * 60)
     logging.info("Logging initialized")
