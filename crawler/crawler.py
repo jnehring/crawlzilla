@@ -257,8 +257,6 @@ class HTMLStore:
         # batch urls for friendly download
         # we never download two urls from the same domain in the same batch
         batches = self.batch_urls(urls, batch_size=self.config.download_batch_size)
-        with open('batches.json', 'w') as f:
-            f.write(json.dumps(batches, indent=4))
         pbar = tqdm(total=len(urls))
         for i in range(len(batches)):
 
@@ -377,6 +375,7 @@ class Parser:
             logging.warning(f"Could not parse meta tags for {source_data.get('url')}: {meta_rules['error']}")
         
         segments = []
+
         # Extract and process text only if indexing is allowed
         if meta_rules.get("can_index", True):
             segments = list(self.html2text.extract_text(soup))
@@ -427,8 +426,7 @@ class Parser:
                 return self.parse_text(source_data)
 
         except Exception as e:
-            logging.error(f"error while parsing url '{url}'")
-            logging.exception(e)
+            logging.debug(f"error while parsing url '{url}'", exc_info=True)
 
 
     # read a single json file that contains html data of many pages
