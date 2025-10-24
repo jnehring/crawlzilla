@@ -111,7 +111,7 @@ class RobotsChecker:
         
         try:
             rp = urllib.robotparser.RobotFileParser()
-            rp.set_url(f"{domain}/robots.txt")
+            rp.set_url(url)
             rp.parse(robots_txt.splitlines())
             crawl_delay = rp.crawl_delay(user_agent)
 
