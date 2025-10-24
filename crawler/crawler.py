@@ -256,7 +256,7 @@ class HTMLStore:
         pbar = tqdm(total=len(urls))
         for i in range(len(batches)):
 
-            logging.debug(f"download batch {i}/{len(batches)} with urls: {batches[i]}")
+            logging.debug(f"download batch {i+1}/{len(batches)} with urls: {batches[i]}")
             # collect parameters for parallel download
             batch = []
             for j in range(len(batches[i])):

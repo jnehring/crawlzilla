@@ -76,6 +76,7 @@ class RobotsChecker:
         self.cache = RobotsCache(cache_file) if enabled else None
 
     def fetch_robots_txt(robots_url: str) -> Optional[str]:
+
         """Fetch and validate robots.txt content"""
         try:
             logging.debug(f'fetch robots.txt from {robots_url}')
@@ -98,11 +99,10 @@ class RobotsChecker:
             return None
         
         domain = self.get_domain(url)
-        robots_url = f"{domain}/robots.txt"
-        robots_txt = self.cache.get_robots_txt(robots_url) if self.cache else None
+        robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
         
         if robots_txt is None:
-            robots_txt = RobotsChecker.fetch_robots_txt(robots_url)
+            robots_txt = RobotsChecker.fetch_robots_txt(domain)
             if robots_txt and self.cache:
                 self.cache.set_robots_txt(domain, robots_txt)
 
@@ -138,7 +138,8 @@ class RobotsChecker:
         assert len(robots_urls) == len(results)
 
         for url, content in zip(robots_urls, results):
-            self.cache.set_robots_txt(url, content)
+            domain = self.get_domain(url)
+            self.cache.set_robots_txt(domain, content)
 
         can_fetch_urls = []
         cannot_fetch_urls = []
@@ -183,6 +184,7 @@ class RobotsChecker:
             domain = self.get_domain(url)
             robots_url = f"{domain}/robots.txt"
             
+            print(domain)
             robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
             
             if robots_txt is None:

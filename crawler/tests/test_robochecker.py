@@ -84,6 +84,14 @@ class TestRobochecker(unittest.TestCase):
         rc = RobotsChecker(cache_file=cache_file)
         self.assertIsNotNone(rc.cache.get_robots_txt(cache_key))
 
+        # test non-existing robots txt
+        domain = 'http://localhost:12345'
+        can_fetch_url = f'{domain}/index.html'
+        self.assertFalse(rc.cache.in_cache(domain))
+        rc.can_fetch_multiple_urls([can_fetch_url])
+        self.assertTrue(rc.cache.in_cache(domain))
+
+        print(rc.cache.cache)
         self.server.shutdown()
         self.server.join()
 
@@ -101,6 +109,7 @@ class TestRobochecker(unittest.TestCase):
                 'https://www.bbc.com/gahuza/amakuru-51986913', 
                 'https://www.irmct.org/rw/amakuru/22-12-12-perezida-gatti-santana-yabonanye-na-bwana-antonio-guterres-umunyamabanga-mukuru']
         can_fetch, cannot_fetch = rc.can_fetch_multiple_urls(urls)
+
 
 if __name__ == '__main__':
     unittest.main()
