@@ -183,3 +183,4 @@ robots_cache.pkl
 seed_urls.txt
 crawler/tasklist.md
 crawler/pyvenv.cfg
+batches.json
