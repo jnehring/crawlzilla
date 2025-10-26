@@ -130,8 +130,8 @@ class RobotsChecker:
     # accept a list of urls that we want to crawl
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch
-    def can_fetch_multiple_urls(self, urls: list, user_agent: str = "*", max_workers: int = 5):
-
+<<<<<<< HEAD
+    def can_fetch_multiple_urls(self, urls: list, user_agent: str = "Crawlzilla/1.0", max_workers: int = 5):
         robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
         robots_urls = list(set(robots_urls))
         robots_urls = list(filter(lambda x: not self.cache.in_cache(self.get_domain(x)), robots_urls))
@@ -179,7 +179,7 @@ class RobotsChecker:
         
         return {"can_index": True, "can_follow": True, "error": "No meta tag found"}
     
-    def check_robots(self, url: str, user_agent: str = "*") -> Dict[str, Any]:
+    def check_robots(self, url: str, user_agent: str = "Crawlzilla/1.0") -> Dict[str, Any]:
         if not self.enabled:
             return {"can_fetch": True, "error": None}
         
@@ -221,7 +221,7 @@ class RobotsChecker:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check if a URL is allowed to be crawled by a user agent.")
     parser.add_argument("url", nargs="?", default=None, help="The URL to check.")
-    parser.add_argument("user_agent", nargs="?", default="*", help="The user agent to check for.")
+    parser.add_argument("user_agent", nargs="?", default="Crawlzilla/1.0", help="The user agent to check for.")
     parser.add_argument("--disable-robots-check", action="store_true", help="Disable robots.txt checking.")
     
     args = parser.parse_args()
