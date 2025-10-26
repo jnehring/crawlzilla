@@ -130,7 +130,6 @@ class RobotsChecker:
     # accept a list of urls that we want to crawl
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch
-<<<<<<< HEAD
     def can_fetch_multiple_urls(self, urls: list, user_agent: str = "Crawlzilla/1.0", max_workers: int = 5):
         robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
         robots_urls = list(set(robots_urls))
