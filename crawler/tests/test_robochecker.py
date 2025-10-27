@@ -71,6 +71,7 @@ class TestRobochecker(unittest.TestCase):
 
         # check disallow crawling by url
         result = rc.check_robots(cannot_fetch_url, user_agent_allowed)
+        print(result)
         self.assertFalse(result['can_fetch'])
 
         # check disallow crawling by user agent
