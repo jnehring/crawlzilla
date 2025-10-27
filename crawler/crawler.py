@@ -675,7 +675,6 @@ class Crawler:
 
             # Create a set for faster lookups
             downloaded_urls_set = set(self.downloaded_urls.urls)
-
             for url in self.urls2download.get_batch(self.config.round_size):
                 url = url.strip()
                 if not url:
@@ -690,6 +689,9 @@ class Crawler:
 
                 urls_for_batch.append(url)
 
+            if len(urls_to_discard) > 0:
+                self.urls2download.remove_urls(urls_to_discard)
+
             # Check robots.txt rules
             urls_for_batch, urls_to_discard = self.robots_checker.can_fetch_multiple_urls(
                 urls_for_batch, 
@@ -702,6 +704,10 @@ class Crawler:
                 logging.info(f"Discarding {len(urls_to_discard)} URLs (disallowed or already seen).")
                 self.urls2download.remove_urls(urls_to_discard)
                 self.downloaded_urls.urls.extend(urls_to_discard)
+
+            if len(urls_for_batch) == 0:
+                logging.info("No URLs to download, stop round")
+                return
 
             logging.info(f"Downloading {len(urls_for_batch)} urls")
             self.html_store.download_urls(urls_for_batch)
@@ -762,7 +768,7 @@ def parse_args(config):
     parser.add_argument('--round_size', default=1000, type=int, help="How many URLs to download per round.")
     parser.add_argument('--download_batch_size', default=250, type=int, help="How many URLs to download per batch.")
     parser.add_argument('--download_n_threads', default=10, type=int, help="How many threads to parallel download data.")
-    parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug"], help="Adjust the logging level")
+    parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug", "trace"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the∏ round has ended.")
     parser.add_argument('--robots_check', default=True, type=bool, help="Enable or disable robots.txt checking.")  #robochecks
