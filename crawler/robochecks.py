@@ -75,8 +75,8 @@ class RobotsChecker:
         self.enabled = enabled
         self.cache = RobotsCache(cache_file) if enabled else None
 
+    @staticmethod
     def fetch_robots_txt(robots_url: str) -> Optional[str]:
-
         """Fetch and validate robots.txt content"""
         try:
             logging.debug(f'fetch robots.txt from {robots_url}')
@@ -93,20 +93,23 @@ class RobotsChecker:
             logger.debug(f"Cannot fetch robots.txt: {str(e)}")
             return RobotsChecker.RobotsTxtDoesNotExist
 
-    def get_crawl_sleep_delay(self, url: str, user_agent : str = 'Crawlzilla/1.0') -> int:
-        """Get Crawl-delay from robots.txt for the given URL"""
+    def _get_and_cache_robots_txt(self, domain: str) -> Optional[str]:
         if not self.enabled:
             return None
         
-        domain = self.get_domain(url)
-        robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
-        
-        if robots_txt is None:
-            robots_txt = RobotsChecker.fetch_robots_txt(domain)
-            if robots_txt and self.cache:
-                self.cache.set_robots_txt(domain, robots_txt)
+        content = self.cache.get_robots_txt(domain) if self.cache else None
+        if content is None:
+            content = RobotsChecker.fetch_robots_txt(f"{domain}/robots.txt")
+            if content and self.cache:
+                self.cache.set_robots_txt(domain, content)
+        return content
 
-        if robots_txt is None:
+    def get_crawl_sleep_delay(self, url: str, user_agent : str = '*') -> int:
+        """Get Crawl-delay from robots.txt for the given URL"""
+        domain = self.get_domain(url)
+        robots_txt = self._get_and_cache_robots_txt(domain)
+
+        if robots_txt is None or robots_txt == RobotsChecker.RobotsTxtDoesNotExist:
             return None
         
         try:
@@ -127,19 +130,19 @@ class RobotsChecker:
     # accept a list of urls that we want to crawl
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch
-    def can_fetch_multiple_urls(self, urls: list, user_agent: str = "*", max_workers: int = 5):
-
+    def can_fetch_multiple_urls(self, urls: list, user_agent: str = "Crawlzilla/1.0", max_workers: int = 5):
         robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
         robots_urls = list(set(robots_urls))
-        robots_urls = list(filter(lambda x: not self.cache.in_cache(x), robots_urls))
+        robots_urls = list(filter(lambda x: not self.cache.in_cache(self.get_domain(x)), robots_urls))
 
         logging.info(f"Fetching {len(robots_urls)} robots.txt files in parallel with {max_workers} workers")
-        results = process_map(RobotsChecker.fetch_robots_txt, robots_urls, max_workers=max_workers, chunksize=1)
-        assert len(robots_urls) == len(results)
+        if len(robots_urls) > 0:
+            results = process_map(RobotsChecker.fetch_robots_txt, robots_urls, max_workers=max_workers, chunksize=1)
+            assert len(robots_urls) == len(results)
 
-        for url, content in zip(robots_urls, results):
-            domain = self.get_domain(url)
-            self.cache.set_robots_txt(domain, content)
+            for url, content in zip(robots_urls, results):
+                domain = self.get_domain(url)
+                self.cache.set_robots_txt(domain, content)
 
         can_fetch_urls = []
         cannot_fetch_urls = []
@@ -175,7 +178,7 @@ class RobotsChecker:
         
         return {"can_index": True, "can_follow": True, "error": "No meta tag found"}
     
-    def check_robots(self, url: str, user_agent: str = "*") -> Dict[str, Any]:
+    def check_robots(self, url: str, user_agent: str = "Crawlzilla/1.0") -> Dict[str, Any]:
         if not self.enabled:
             return {"can_fetch": True, "error": None}
         
@@ -184,12 +187,7 @@ class RobotsChecker:
             domain = self.get_domain(url)
             robots_url = f"{domain}/robots.txt"
             
-            robots_txt = self.cache.get_robots_txt(domain) if self.cache else None
-            
-            if robots_txt is None:
-                robots_txt = RobotsChecker.fetch_robots_txt(robots_url)
-                if robots_txt and self.cache:
-                    self.cache.set_robots_txt(domain, robots_txt)
+            robots_txt = self._get_and_cache_robots_txt(domain)
 
             result: Dict[str, Any] = {
                 "can_fetch": True, # Default to True (fail-open)
@@ -222,7 +220,7 @@ class RobotsChecker:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check if a URL is allowed to be crawled by a user agent.")
     parser.add_argument("url", nargs="?", default=None, help="The URL to check.")
-    parser.add_argument("user_agent", nargs="?", default="*", help="The user agent to check for.")
+    parser.add_argument("user_agent", nargs="?", default="Crawlzilla/1.0", help="The user agent to check for.")
     parser.add_argument("--disable-robots-check", action="store_true", help="Disable robots.txt checking.")
     
     args = parser.parse_args()
