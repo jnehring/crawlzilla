@@ -105,7 +105,7 @@ class CrawlerConfig:
 def download(args):
     url, config, pbar = args
 
-    logging.info(f"Downloading {url}") #for debugging only
+    logging.debug(f"Downloading {url}") #for debugging only
 
     json_data = {
         "url": url,
@@ -807,11 +807,12 @@ def init_logging(config):
 
     # Create handlers
     file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler(sys.stdout)
 
     # Define format
     log_format = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        "%(asctime)s [%(levelname)s] %(name)s - %(filename)s:%(lineno)d - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler.setFormatter(log_format)
@@ -829,10 +830,9 @@ def init_logging(config):
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("tqdm").setLevel(logging.WARNING)
 
-    warnings.filterwarnings("ignore", category=urllib3.exceptions.SNIMissingWarning)
-    warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
-    warnings.filterwarnings("ignore", category=urllib3.exceptions.SubjectAltNameWarning)
-
+    # warnings.filterwarnings("ignore", category=urllib3.exceptions.SNIMissingWarning)
+    # warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
+    # warnings.filterwarnings("ignore", category=urllib3.exceptions.SubjectAltNameWarning)
 
     logging.info("=" * 60)
     logging.info("Logging initialized")
@@ -852,6 +852,7 @@ def start_crawler(config):
         os.makedirs(config.output_folder)
 
     init_logging(config)
+
     logging.info("Start Crawler")
     logging.info("Config: " + str(config.__dict__))
 
