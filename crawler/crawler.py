@@ -773,7 +773,7 @@ def parse_args(config):
     parser.add_argument('--log_level', default="info", type=str, choices=["info", "debug", "trace"], help="Adjust the logging level")
     parser.add_argument('--delete_parsed', default=False, action="store_true", help="Delete the parsed data when the round has ended.")
     parser.add_argument('--delete_html', default=False, action="store_true", help="Delete the html data when the∏ round has ended.")
-    parser.add_argument('--robots_check', default=True, action=argparse.BooleanOptionalAction, help="Enable or disable robots.txt checking.")  #robochecks
+    parser.add_argument('--robots_check', default=True, type=bool, help="Enable or disable robots.txt checking.")  #robochecks
     parser.add_argument('--dont_compress_outputs', default=False, action="store_true", help="GZip compress the output files")
     parser.add_argument('--warc_output', default=False, action="store_true", help="Write WARC files in addition to the normal JSON files.")
 
@@ -832,9 +832,9 @@ def init_logging(config):
     root_logger.addHandler(console_handler)
 
     # Suppress noisy loggers
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("tqdm").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("requests").setLevel(logging.ERROR)
+    logging.getLogger("tqdm").setLevel(logging.ERROR)
 
     # warnings.filterwarnings("ignore", category=urllib3.exceptions.SNIMissingWarning)
     # warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
