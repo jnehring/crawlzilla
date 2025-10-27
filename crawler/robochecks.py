@@ -48,23 +48,28 @@ class RobotsCache:
         except Exception as e:
             logger.error(f"Error saving cache: {e}")
     
-    def get_robots_txt(self, domain: str) -> Optional[str]:
+    def get_robots_txt(self, url: str) -> Optional[str]:
         """Get robots.txt content from cache if valid"""
         with self.lock:
+            domain = self.get_cache_key(url)
             if domain in self.cache:
                 content, timestamp = self.cache[domain]
                 if datetime.now() - timestamp < self.cache_duration:
                     return content
             return None
-        
-    def in_cache(self, domain: str) -> bool:
+
+    def get_cache_key(self, url: str) -> str:
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def in_cache(self, url: str) -> bool:
         with self.lock:
-            return domain in self.cache
+            return self.get_cache_key(url) in self.cache
     
-    def set_robots_txt(self, domain: str, content: str):
+    def set_robots_txt(self, url: str, content: str):
         with self.lock:
             """Store robots.txt content in cache"""
-            self.cache[domain] = (content, datetime.now())
+            self.cache[self.get_cache_key(url)] = (content, datetime.now())
             self._save_cache()
 
 class RobotsChecker:
@@ -92,22 +97,29 @@ class RobotsChecker:
         except requests.exceptions.RequestException as e:
             logger.debug(f"Cannot fetch robots.txt: {str(e)}")
             return RobotsChecker.RobotsTxtDoesNotExist
+        
+    
 
-    def _get_and_cache_robots_txt(self, domain: str) -> Optional[str]:
+    # check in cache if robots.txt exists, return from there
+    # otherwise, fetch it, write it to the cache and return this 
+    def get_and_cache_robots_txt(self, url: str) -> Optional[str]:
         if not self.enabled:
             return None
         
-        content = self.cache.get_robots_txt(domain) if self.cache else None
+        content = self.cache.get_robots_txt(url) if self.cache else None
         if content is None:
-            content = RobotsChecker.fetch_robots_txt(f"{domain}/robots.txt")
-            if content and self.cache:
-                self.cache.set_robots_txt(domain, content)
+            robots_url = f"{self.get_domain(url)}/robots.txt"
+            content = RobotsChecker.fetch_robots_txt(robots_url)
+
+            if content is None:
+                content = RobotsChecker.RobotsTxtDoesNotExist
+            if self.cache:
+                self.cache.set_robots_txt(url, content)
         return content
 
     def get_crawl_sleep_delay(self, url: str, user_agent : str = '*') -> int:
         """Get Crawl-delay from robots.txt for the given URL"""
-        domain = self.get_domain(url)
-        robots_txt = self._get_and_cache_robots_txt(domain)
+        robots_txt = self.get_and_cache_robots_txt(url)
 
         if robots_txt is None or robots_txt == RobotsChecker.RobotsTxtDoesNotExist:
             return None
@@ -131,18 +143,19 @@ class RobotsChecker:
     # if robots.txts is not in cache, fetch them in parallel
     # return 2 lists of urls we can fetch and we cannot fetch
     def can_fetch_multiple_urls(self, urls: list, user_agent: str = "Crawlzilla/1.0", max_workers: int = 5):
-        robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
-        robots_urls = list(set(robots_urls))
-        robots_urls = list(filter(lambda x: not self.cache.in_cache(self.get_domain(x)), robots_urls))
+        # robots_urls = [self.get_domain(url) + '/robots.txt' for url in urls]
+        # robots_urls = list(set(robots_urls))
+        # robots_urls = list(filter(lambda x: not self.cache.in_cache(self.get_domain(x)), robots_urls))
+        
+        download_urls = list(filter(lambda x: not self.cache.in_cache(x), urls))
 
-        logging.info(f"Fetching {len(robots_urls)} robots.txt files in parallel with {max_workers} workers")
-        if len(robots_urls) > 0:
-            results = process_map(RobotsChecker.fetch_robots_txt, robots_urls, max_workers=max_workers, chunksize=1)
-            assert len(robots_urls) == len(results)
+        logging.info(f"Fetching {len(download_urls)} robots.txt files in parallel with {max_workers} workers")
+        if len(download_urls) > 0:
+            results = process_map(RobotsChecker.fetch_robots_txt, download_urls, max_workers=max_workers, chunksize=1)
+            assert len(download_urls) == len(results)
 
-            for url, content in zip(robots_urls, results):
-                domain = self.get_domain(url)
-                self.cache.set_robots_txt(domain, content)
+            for url, content in zip(download_urls, results):
+                self.cache.set_robots_txt(url, content)
 
         can_fetch_urls = []
         cannot_fetch_urls = []
@@ -187,7 +200,7 @@ class RobotsChecker:
             domain = self.get_domain(url)
             robots_url = f"{domain}/robots.txt"
             
-            robots_txt = self._get_and_cache_robots_txt(domain)
+            robots_txt = self.get_and_cache_robots_txt(domain)
 
             result: Dict[str, Any] = {
                 "can_fetch": True, # Default to True (fail-open)
