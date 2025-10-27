@@ -14,4 +14,4 @@ python3 crawler.py \
     --download_n_threads 200 \
     --language $1 \
     --seed_file ../../seeds-2025-10-10/$1.txt.gz \
-    --warc_output
+    --warc_output --log_level debug
