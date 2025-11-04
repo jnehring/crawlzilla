@@ -6,7 +6,7 @@ This is the Crawlzilla, a software program to crawl websites and generate LLM tr
 
 1. High speed.
 2. Friendly crawling - Crawlzilla respects robots.txt, implements waiting times and does not crawl aggressively.
-3. Easy to setup - Crawlzilla does not require any server infrastructure to run. It can easily run on a single laptop.
+3. Easy to setup - Crawlzilla does not require any server infrastructure, databases, etc. to run. It can easily run on a single laptop.
 
 ## Table of Contents
 
