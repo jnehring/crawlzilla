@@ -69,7 +69,7 @@ python3 crawler.py \
     --delete_html
 ```
 
-[You can find the most recent seed urls here.](https://drive.google.com/drive/folders/1KBtgebx1YnT4caL8uRRysjgvBp09fiIJ?usp=sharing)
+[You can find the most recent seed urls here.](https://drive.google.com/drive/folders/1-FLVF0Bf7BO9n8xuwNwYhbkfPMxAJHZG?usp=sharing)
 
 **Debug crawl for a single page**
 
