@@ -140,7 +140,7 @@ options:
 
 <img src="/images/flowchart.drawio.png" />
 
-The image shows the workflow of the application. All this logic is implemented in `crawler/crawler.py`.
+The image shows the workflow of the application.
 
 1. The crawling starts with a list of seed urls that we retrieved from the CommonCrawl.
 2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round. The crawling loop is implemented in function `main()` and the method `round` in class `Crawler`. 
