@@ -8,6 +8,8 @@ This is the Crawlzilla, a software program to crawl websites and generate LLM tr
 2. Friendly crawling - Crawlzilla respects robots.txt, implements waiting times and does not crawl aggressively.
 3. Easy to setup - Crawlzilla does not require any server infrastructure, databases, etc. to run. It can easily run on a single laptop.
 
+The first outcome of Crawlzilla is the [Mbaza Monolingual Corpus 1.1](https://huggingface.co/datasets/mbazaNLP/kinyarwanda_monolingual_v01.1). More will come soon.
+
 ## Table of Contents
 
 1. [Getting started](#getting-started)
