@@ -35,6 +35,8 @@ git clone git@github.com:jnehring/crawlzilla.git
 
 **Create virtual environment**
 
+The crawler requires Python version 3.11. It can work with smaller Python versions, but it does not work with version >= 3.12.
+
 ```
 cd crawler
 python -m pip install venv

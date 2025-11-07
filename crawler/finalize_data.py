@@ -9,154 +9,172 @@ import nltk
 import re
 from tqdm import tqdm
 import argparse
-from multiprocessing import Pool
+import pyarrow as pa
+import pyarrow.parquet as pq
+from typing import List
+import shutil
+import pyarrow.dataset as ds
 
-
-def get_lang(file):
-    file = file[file.find("_")+1:]
-    file = file[0:file.find(".")]
-    return file
-
-def create_language(language, args):
-
-    print("create " + language)
-    language_folder = os.path.join(args.working_folder, language)
-
-    to_folder = os.path.join(language_folder, "textual_outputs")
-
-    stats = {
-        "language": language,
-        "characters": 0,
-        "sentences": 0,
-        "words": 0,
-        "urls": 0,
-        "duplicates": 0,
-    }
-
-    if os.path.exists(to_folder) and len(os.listdir(to_folder)) > 0:
-        infiles = [os.path.join(to_folder, infile) for infile in os.listdir(to_folder)]
-
-        outfile = os.path.join(args.working_folder, "final_output", f"final_data_{language}.txt")
-
-        dedups = set()
-
-        pbar = tqdm(total=len(infiles))
-
-        with open(outfile, "w")  as writer:
-            for file in infiles:
-                for line in open(file):
-                    h = hash(line)
-                    if h in dedups:
-                        continue
-
-                    dedups.add(h)
-                    writer.write(line)
-
-
-                    stats["urls"] += 1
-
-                    # collect statistics
-                    for l in line.split("\n"):
-                        sent_text = nltk.sent_tokenize(l) # this gives us a list of sentences
-                        stats["sentences"] += len(sent_text)
-
-                        for sent in sent_text:
-
-                            # deduplicate
-                            h = hash(sent)
-                            if h in dedups:
-                                stats["duplicates"] += 1
-                                continue
-                            dedups.add(h)
-
-                            stats["words"] += len(sent.split(" "))
-                            stats["characters"] += len(sent)
-
-                pbar.update(1)
-
-
-    stats["downloaded_urls"] = count_lines(os.path.join(language_folder, "downloaded_urls.txt"))
-    stats["urls2download"] = count_lines(os.path.join(language_folder, "urls2download.txt"))
-    stats["duplicates"] = 100 * stats["duplicates"] / stats["sentences"]
-    return stats
-
-def count_lines(infile):
-    if not os.path.exists(infile):
-        return 0
-    else:
-        return len(open(infile).readlines())
-
+# parse command line arguments
 def parse_args():
     parser = argparse.ArgumentParser(
                         prog='Data Generator',
                         description='Generate data from crawls')
     
-    parser.add_argument('--working_folder', default="../outputs/", type=str, help="Where is the data")
+    parser.add_argument('--input_folder', default="../outputs/", type=str, help="folder in which the input data is stored. by default, this is ../outputs")
+    parser.add_argument('--output_folder', default="../outputs/final_dataset", type=str, help="folder in which the output data is stored. by default, this is ../outputs/final_dataset")
     parser.add_argument('--languages', default=None, type=str, help="Limit to certain languages")
-    parser.add_argument('--report_location', default="../outputs/report.txt", type=str, help="Where to create the report.")
+    parser.add_argument('--batch_size', default=500000, type=int, help="size of batches")
 
     return parser.parse_args()
+
+# iterate over all data files and yield batches
+def iterate_over_files(args):
+    batch = []
+    for folder in os.listdir(args.input_folder):
+        if args.languages is not None and folder not in args.languages:
+            print(f"skipping folder {os.path.join(args.input_folder, folder)}")
+            continue
+        
+        dedub = []
+        infolder = os.path.join(folder, "textual_outputs")
+        infiles = os.listdir(os.path.join(args.input_folder, infolder))
+
+        pbar = tqdm(total=len(infiles))
+        language, script = folder.split("_")
+        dedups = set()
+
+        print(f"reading {len(infiles)} files from folder {folder}")
+
+        for file in infiles:
+            with open(os.path.join(args.input_folder, infolder, file)) as f:
+                for line in f:
+                    h = hash(line)
+                    if h in dedups:
+                        continue
+
+                    dedups.add(h)
+
+                    batch.append({
+                        "text": line[0:-1],
+                        "language": language,
+                        "script": script
+                    })
+
+
+                    if len(batch) >= args.batch_size:
+                        yield batch
+                        batch = []
+
+            pbar.update(1)
+
+    if len(batch) > 0:
+        yield batch
+
+# initialize the parquet dataset
+def create_parquet_schema(folder):
+
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    schema = pa.schema([
+        ("text", pa.large_string()),
+        ("language", pa.dictionary(pa.int8(), pa.string())),  # efficient tiny codes
+        ("script", pa.dictionary(pa.int8(), pa.string())),
+    ])
+    common_meta_path = os.path.join(folder, "_common_metadata")
+    meta_path = os.path.join(folder, "_metadata")
+
+    # Write dataset-level metadata that carries the schema
+    pq.write_metadata(schema, common_meta_path)
+    pq.write_metadata(schema, meta_path)
+
+    return schema
+
+# write one batch to parquet
+def write_batch(folder : str, batch : List, batch_number : int):
+    table = pa.table({
+        "text": pa.array([row['text'] for row in batch], type=pa.large_string()),
+        "language": pa.array([row['language'] for row in batch], type=pa.dictionary(pa.int8(), pa.string())),
+        "script": pa.array([row['script'] for row in batch], type=pa.dictionary(pa.int8(), pa.string())),
+    })
+
+    writer = pq.ParquetWriter(
+        os.path.join(folder, f"part-{batch_number}.parquet"),
+        schema=table.schema,
+        compression="zstd",
+        use_dictionary=["language", "script"],
+        write_statistics=True,
+    )
+    writer.write_table(table)
+
+# read the dataset and compute statistics
+def create_stats(args, dataset_folder):
+
+    print('start computing statistics')
+    dataset = ds.dataset(dataset_folder, format="parquet")
+
+    total_rows = sum(fragment.metadata.num_rows for fragment in dataset.get_fragments())
+    stats = {}
+    pbar = tqdm(total=total_rows)
+    for batch in dataset.to_batches():
+        for row in batch.to_pylist():
+
+            key = row['language'] + "_" + row['script']
+            if key not in stats:
+                stats[key] = {
+                    "language": row['language'],
+                    "script": row['script'],
+                    "characters": 0,
+                    "sentences": 0,
+                    "words": 0,
+                    "urls": 0,
+                }
+            for l in row['text'].split("\n"):
+                sent_text = nltk.sent_tokenize(l) # this gives us a list of sentences
+                stats[key]["sentences"] += len(sent_text)
+
+                for sent in sent_text:
+                    stats[key]["words"] += len(sent.split(" "))
+                    stats[key]["characters"] += len(sent)
+            
+            pbar.update(1)
+
+    report = []
+    for s in stats.values():
+        report.append(f"Language: {s['language']}")
+        report.append(f"script: {s['script']}")
+        report.append(f"words: {s['words']:,}")
+        report.append(f"characters: {s['characters']:,}")
+        report.append('---')
+
+    report = "\n".join(report)
+
+    print('Statistics')
+    print(report)
+
+    outfile = os.path.join(args.output_folder, "stats.txt")
+    with open(outfile, "w") as f:
+        f.write(report)
+    print("wrote statistics to " + outfile)
 
 def main():
 
     args = parse_args()
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt')
 
-    final_output_folder = os.path.join(args.working_folder, "final_output")
-    if not os.path.exists(final_output_folder):
-        os.makedirs(final_output_folder)
+    if os.path.exists(args.output_folder):
+        shutil.rmtree(args.output_folder)
+    os.makedirs(args.output_folder)
 
-    # detect language
-    languages = []
-    if args.languages is None:
-        def filter_languages(file):
-            path = os.path.join(args.working_folder, file)
-            return os.path.isdir(path) and file != 'seedurls' and file != "final_output"
-        languages = list(filter(filter_languages, os.listdir(args.working_folder)))
-    else:
-        if args.languages.find(',') > 0:
-            languages = args.languages.split(",")
-        else:
-            languages = [args.languages]
+    dataset_folder = os.path.join(args.output_folder, "dataset")
+    schema = create_parquet_schema(dataset_folder)
+    i = 0
+    all_stats = {}
+    for batch in iterate_over_files(args):
+        write_batch(dataset_folder, batch, i)
+        i += 1
 
-    results = [create_language(language, args) for language in languages]
-
-    # # process in the same or parallel threads
-    # if len(languages) ==  1:
-    #     results = [create_language(languages[0], args)]
-    # else:
-    #     with Pool() as pool:
-    #         workers = [(language, args) for language in languages]
-    #         results = pool.map(workers, create_language)
-
-    results = pd.DataFrame(results)
-    outfile = os.path.join(final_output_folder, "stats.csv")
-    results.to_csv(outfile)
-    print("wrote " + outfile)
-
-    for c in ["characters", "sentences", "words", "urls", "downloaded_urls", "urls2download"]:
-        results[c] = results[c].apply(lambda x:f"{x:,}")
-
-    c = "duplicates"
-    results[c] = results[c].apply(lambda x:f"{x:.2f}%")
-
-    results = pd.DataFrame(results)
-    outfile = os.path.join(final_output_folder, "stats.txt")
-    with open(outfile, "w") as f:
-        f.write(results.to_string())
-    print("wrote " + outfile)
-
-    sep = "-"*20
-    for ix, row in results.iterrows():
-        print(sep)
-        print(row["language"])
-        print(sep)
-        for key, value in row.items():
-            print(f"{key}:\t{value}")
-        print(sep)
+    create_stats(args, dataset_folder)
 
 if __name__ == "__main__":
     main()
