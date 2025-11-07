@@ -100,7 +100,7 @@ def write_batch(folder : str, batch : List, batch_number : int):
     })
 
     writer = pq.ParquetWriter(
-        os.path.join(folder, f"part-{batch_number}.parquet"),
+        os.path.join(folder, f"part-{batch_number:05d}.parquet"),
         schema=table.schema,
         compression="zstd",
         use_dictionary=["language", "script"],
