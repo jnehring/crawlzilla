@@ -8,6 +8,8 @@ This is the Crawlzilla, a software program to crawl websites and generate LLM tr
 2. Friendly crawling - Crawlzilla respects robots.txt, implements waiting times and does not crawl aggressively.
 3. Easy to setup - Crawlzilla does not require any server infrastructure, databases, etc. to run. It can easily run on a single laptop.
 
+The first outcome of Crawlzilla is the [Mbaza Monolingual Corpus 1.1](https://huggingface.co/datasets/mbazaNLP/kinyarwanda_monolingual_v01.1). More will come soon.
+
 ## Table of Contents
 
 1. [Getting started](#getting-started)
@@ -71,7 +73,7 @@ python3 crawler.py \
     --delete_html
 ```
 
-[You can find the most recent seed urls here.](https://drive.google.com/drive/folders/1KBtgebx1YnT4caL8uRRysjgvBp09fiIJ?usp=sharing)
+[You can find the most recent seed urls here.](https://drive.google.com/drive/folders/1-FLVF0Bf7BO9n8xuwNwYhbkfPMxAJHZG?usp=sharing)
 
 **Debug crawl for a single page**
 
@@ -140,7 +142,7 @@ options:
 
 <img src="/images/flowchart.drawio.png" />
 
-The image shows the workflow of the application. All this logic is implemented in `crawler/crawler.py`.
+The image shows the workflow of the application.
 
 1. The crawling starts with a list of seed urls that we retrieved from the CommonCrawl.
 2. The next step is the crawling loop. The crawling loop operates in rounds. Each round first downloads a certain number of URLs, e.g. 2000 URLs per round. The crawling loop is implemented in function `main()` and the method `round` in class `Crawler`. 
