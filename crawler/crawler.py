@@ -654,8 +654,8 @@ class Crawler:
         parse_file = os.path.join(self.config.output_folder, self.config.parsed_folder, filename)
         textual_files = glob.glob(os.path.join(self.config.output_folder, self.config.text_folder, f"{num:05}*"))
 
-        if len(textual_files) > 0:
-            logging.info(f"skip round {num} because of existing output files: {textual_files}")
+        if len(textual_files) > 0 and os.path.exists(html_file) and os.path.exists(parse_file):
+            logging.info(f"skip round {num} because of existing output files")
             return 
 
         logging.info(f"start round {num}")
@@ -663,8 +663,9 @@ class Crawler:
         logging.info(f"number of downloaded urls: {len(self.downloaded_urls.urls):,}")
 
         # download websites
-        if not os.path.exists(html_file):
-
+        if os.path.exists(html_file):
+            logging.debug(f"skip downloading of round {num} because file '{html_file}' exists")
+        else:
             tmp_file = os.path.join(self.config.output_folder, self.config.html_folder, "tmp_" + filename)
 
             self.html_store.init_round(tmp_file, num)
@@ -719,12 +720,11 @@ class Crawler:
             self.downloaded_urls.write2file()
 
             os.rename(tmp_file, html_file)
-        else:
-            logging.debug(f"skip downloading of round {num} because file '{html_file}' exists")
 
         # parse data
-        if not os.path.exists(parse_file):
-
+        if os.path.exists(parse_file):
+            logging.debug(f"skip parsing of round {num} because file '{parse_file}' exists")
+        else:
             logging.info(f"parsing round {num}")
             tmp_file, new_urls, domains2languages = self.parser.parse_json(html_file)
             
@@ -742,8 +742,6 @@ class Crawler:
                 if url not in existing_urls and url not in urls2download:
                     self.urls2download.urls.append(url)
             self.urls2download.write2file()
-        else:
-            logging.debug(f"skip parsing of round {num} because file '{parse_file}' exists")
 
         # cleanup
         if self.config.delete_html:

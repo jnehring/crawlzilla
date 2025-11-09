@@ -170,10 +170,17 @@ def create_stats(args, dataset_folder):
     pd.DataFrame(report).to_csv(outfile)
     print("wrote statistics to " + outfile)
 
+def setup_nltk():
+    try:
+        nltk.data.find('tokenizers/punkt/PY3_tab')
+    except Exception as e:
+        print("Downloading 'punkt_tab' NLTK data...")
+        nltk.download('punkt_tab')
+
 def main():
 
     args = parse_args()
-
+    setup_nltk()
     if os.path.exists(args.output_folder):
         shutil.rmtree(args.output_folder)
     os.makedirs(args.output_folder)

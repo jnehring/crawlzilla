@@ -5,5 +5,5 @@ nltk==3.9.1
 fasttext-numpy2==0.10.4
 numpy==1.22.0
 warcio==1.7.5
-pandas==2.3.3
-pyarrow==22.0.0
+pandas==2.0.3
+pyarrow==17.0.0

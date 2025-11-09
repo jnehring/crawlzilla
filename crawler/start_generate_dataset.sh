@@ -6,4 +6,6 @@ export HF_HOME=/data/nehring/cache/hf_home
 export PIP_CACHE_DIR=/data/nehring/cache/pip
 export NLTK_DATA=/data/nehring/cache/nltk
 
-python finalize_data.py  --language run_Latn,kin_Latn
+pip3 install --cache-dir /data/nehring/cache/pip -r requirements.txt
+
+python generate_dataset.py
