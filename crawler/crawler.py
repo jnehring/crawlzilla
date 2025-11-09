@@ -3,7 +3,6 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Dict
 import requests
-import re
 import json
 from bs4 import BeautifulSoup
 import fasttext
@@ -29,8 +28,6 @@ from extract_text import HTML2Text
 from warcio.warcwriter import WARCWriter
 from warcio.statusandheaders import StatusAndHeaders
 from io import BytesIO
-import warnings
-import urllib3
 
 @dataclass
 class CrawlerConfig:
@@ -47,7 +44,7 @@ class CrawlerConfig:
         download_n_threads = 30,
         accept_content_types : Dict[str,str] = {
             "text/html": "html",
-            # "application/pdf": "pdf"
+            # "application/pdf": "pdf"  # pdf parsing is currently disabled because of low data quality
         },
         request_timeout : int = 6,
         crawl_delay : int = 1,

@@ -1,3 +1,7 @@
+"""
+Helper functions to read, parse, cache and save robots.txt files.
+"""
+
 import sys
 import requests
 import json

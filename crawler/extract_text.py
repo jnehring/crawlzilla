@@ -1,9 +1,13 @@
+"""
+Helper functions to extract clean text from HTML documents.
+"""
+
 import re
 #import fitz
 from bs4 import BeautifulSoup
 import requests 
 
-
+# this is not used because the data quality of pdfs was too low. might be extended in future.
 def pdf2html(doc):
     """Convert PDF to HTML
 

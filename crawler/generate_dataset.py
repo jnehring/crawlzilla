@@ -18,13 +18,13 @@ import pyarrow.dataset as ds
 # parse command line arguments
 def parse_args():
     parser = argparse.ArgumentParser(
-                        prog='Data Generator',
-                        description='Generate data from crawls')
+                        prog='Crawlzilla Dataset Generator',
+                        description='Generate a Parquet dataset from all crawls.')
     
     parser.add_argument('--input_folder', default="../outputs/", type=str, help="folder in which the input data is stored. by default, this is ../outputs")
-    parser.add_argument('--output_folder', default="../outputs/final_dataset", type=str, help="folder in which the output data is stored. by default, this is ../outputs/final_dataset")
-    parser.add_argument('--languages', default=None, type=str, help="Limit to certain languages")
-    parser.add_argument('--batch_size', default=500000, type=int, help="size of batches")
+    parser.add_argument('--output_folder', default="../outputs/final_dataset", type=str, help="Folder in which the output data is stored. by default, this is ../outputs/final_dataset")
+    parser.add_argument('--languages', default=None, type=str, help="Limit to certain languages. You can comma-separate the languages, e.g., kin_Latn,hau_Arab")
+    parser.add_argument('--batch_size', default=500000, type=int, help="Number of samples in each batch. Default is 500.000 which writes batches of about 40MB to disk.")
 
     return parser.parse_args()
 
@@ -33,12 +33,16 @@ def iterate_over_files(args):
     batch = []
     for folder in os.listdir(args.input_folder):
         if args.languages is not None and folder not in args.languages:
-            print(f"skipping folder {os.path.join(args.input_folder, folder)}")
+            print(f"skip folder {os.path.join(args.input_folder, folder)}")
             continue
         
         dedub = []
-        infolder = os.path.join(folder, "textual_outputs")
-        infiles = os.listdir(os.path.join(args.input_folder, infolder))
+        infolder = os.path.join(args.input_folder, folder, "textual_outputs")
+        if not os.path.exists(infolder):
+            print(f'skip folder {infolder}')
+            continue
+
+        infiles = os.listdir(os.path.join(infolder))
 
         pbar = tqdm(total=len(infiles))
         language, script = folder.split("_")
@@ -111,7 +115,7 @@ def write_batch(folder : str, batch : List, batch_number : int):
 # read the dataset and compute statistics
 def create_stats(args, dataset_folder):
 
-    print('start computing statistics')
+    print('compute statistics')
     dataset = ds.dataset(dataset_folder, format="parquet")
 
     total_rows = sum(fragment.metadata.num_rows for fragment in dataset.get_fragments())
@@ -128,7 +132,6 @@ def create_stats(args, dataset_folder):
                     "characters": 0,
                     "sentences": 0,
                     "words": 0,
-                    "urls": 0,
                 }
             for l in row['text'].split("\n"):
                 sent_text = nltk.sent_tokenize(l) # this gives us a list of sentences
@@ -140,22 +143,31 @@ def create_stats(args, dataset_folder):
             
             pbar.update(1)
 
+    # output stats
     report = []
     for s in stats.values():
-        report.append(f"Language: {s['language']}")
-        report.append(f"script: {s['script']}")
-        report.append(f"words: {s['words']:,}")
-        report.append(f"characters: {s['characters']:,}")
-        report.append('---')
+        language_stats = {
+            "language": s['language'],
+            "script": s['script'],
+            "words": s['words'],
+            "characters": s['characters'],
+            "sentences": s['sentences']
+        }
+        report.append(language_stats)
 
-    report = "\n".join(report)
+    report_str = []
+    for r in report:
+        language_stats = []
+        for key, value in r.items():
+            language_stats.append(f"{key}: {value}")
+        report_str.append("\n".join(language_stats))
+    report_str = "\n-----\n".join(report_str)
+    print("Statistics")
+    print(report_str)
+    print()
 
-    print('Statistics')
-    print(report)
-
-    outfile = os.path.join(args.output_folder, "stats.txt")
-    with open(outfile, "w") as f:
-        f.write(report)
+    outfile = os.path.join(args.output_folder, "stats.csv")
+    pd.DataFrame(report).to_csv(outfile)
     print("wrote statistics to " + outfile)
 
 def main():

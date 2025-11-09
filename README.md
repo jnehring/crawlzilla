@@ -215,6 +215,7 @@ python -m unittest tests.test_crawler
 
 * [How to generate seed URLs from Commoncrawl](doc/create_seed_urls.ipynb)
 * [What is good clean text for Language Models](doc/what-is-good-clean-test.md)
+* [Generate dataset](doc/generate-dataset.md)
 
 ## License
 
