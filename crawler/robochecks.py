@@ -98,7 +98,7 @@ class RobotsChecker:
                     return RobotsChecker.RobotsTxtDoesNotExist
                 return resp.text
             return RobotsChecker.RobotsTxtDoesNotExist
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.debug(f"Cannot fetch robots.txt: {str(e)}")
             return RobotsChecker.RobotsTxtDoesNotExist
         
